@@ -10,7 +10,8 @@ public interface IAgentRunner
 public record AgentRequest(
     string AgentRole,
     string TaskId,
-    string Instructions);
+    string Instructions,
+    string WorkingDirectory);
 
 public record AgentResult(
     bool Success,

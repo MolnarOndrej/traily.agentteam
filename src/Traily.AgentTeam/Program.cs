@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Traily.AgentTeam.Runtime;
 using Traily.AgentTeam.Agents;
 
 var rootDirectory = Directory.GetCurrentDirectory();
@@ -6,9 +7,11 @@ var rootDirectory = Directory.GetCurrentDirectory();
 var services = new ServiceCollection();
 
 services.AddSingleton<IAgentCatalog, AgentCatalog>();
-
 services.AddSingleton(
     _ => new AgentInstructionsLoader(rootDirectory));
+services.AddSingleton<CodexProcessClient>();
+services.AddSingleton<CodexResponseParser>();
+services.AddSingleton<IAgentRunner, CodexAgentRunner>();
 
 using var serviceProvider = services.BuildServiceProvider();
 
@@ -18,6 +21,9 @@ var agentInstructionsLoader =
     serviceProvider.GetRequiredService<AgentInstructionsLoader>();
 
 var teamLead = agentCatalog.GetRequired("team-lead");
+
+var agentRunner =
+    serviceProvider.GetRequiredService<IAgentRunner>();
 
 var instructions = await agentInstructionsLoader.LoadAsync(teamLead);
 
@@ -37,21 +43,36 @@ var roleInstructions = await File.ReadAllTextAsync(
 var skillInstructions = await File.ReadAllTextAsync(
     skillInstructionsPath);
 
-if (!instructions.Contains(roleInstructions, StringComparison.Ordinal))
+if (!instructions.Contains(roleInstructions, StringComparison.Ordinal) ||
+    !instructions.Contains(skillInstructions, StringComparison.Ordinal))
 {
     throw new InvalidOperationException(
-        "Team Lead role instructions were not loaded correctly.");
+        "Agent instructions could not be verified.");
 }
 
-if (!instructions.Contains(skillInstructions, StringComparison.Ordinal))
+const string expectedResponse = "TRAILY_CODEX_SMOKE_TEST_OK";
+
+var request = new AgentRequest(
+    AgentRole: teamLead.Role,
+    TaskId: "TRAILY-SMOKE-TEST",
+    Instructions: $"""
+        This is a Traily runtime connectivity test.
+
+        Reply with exactly this text:
+        {expectedResponse}
+
+        Do not inspect files or use tools.
+        """,
+    WorkingDirectory: rootDirectory);
+
+var result = await agentRunner.RunAsync(request);
+
+if (!result.Success ||
+    result.Output.Trim() != expectedResponse)
 {
     throw new InvalidOperationException(
-        "Task-analysis skill instructions were not loaded correctly.");
+        "Agent execution smoke test failed.");
 }
 
-Console.WriteLine($"Agent: {teamLead.Role}");
-Console.WriteLine($"Agent ID: {teamLead.Id}");
-Console.WriteLine($"Assigned skills: {string.Join(", ", teamLead.SkillIds)}");
-Console.WriteLine($"Loaded instructions: {instructions.Length} characters");
-Console.WriteLine("Role instructions: verified");
-Console.WriteLine("Task-analysis skill: verified");
+Console.WriteLine(
+    $"Traily smoke test passed. Agent: {teamLead.Role}");
