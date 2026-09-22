@@ -32,17 +32,23 @@ public sealed class CodexAgentRunner : IAgentRunner
         ArgumentException.ThrowIfNullOrWhiteSpace(request.AgentId);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.TaskId);
 
+        var trace = await _traceWriter.StartAsync(
+            new ExecutionTraceContext(
+            request.AgentId,
+            request.TaskId),
+            cancellationToken);
+
         var processResult = await _processClient.ExecuteAsync(
             request.WorkingDirectory,
             request.Instructions,
-            cancellationToken);
-
-        await _traceWriter.WriteAsync(
-            new ExecutionTraceContext(
-                request.AgentId,
-                request.TaskId
-            ),
-            processResult,
+            (output, token) => _traceWriter.AppendStandardOutputAsync(
+                trace,
+                output,
+                token),
+            (error, token) => _traceWriter.AppendStandardErrorAsync(
+                trace,
+                error,
+                token),
             cancellationToken);
 
         if (processResult.ExitCode != 0)

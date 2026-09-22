@@ -17,7 +17,7 @@ services.AddSingleton<CodexProcessClient>();
 services.AddSingleton<CodexResponseParser>();
 services.AddSingleton<IAgentRunner, CodexAgentRunner>();
 services.AddSingleton<IExecutionTraceWriter>(
-    _ => new CodexExecutionTraceWriter(traceDirectory));
+    _ => new FileExecutionTraceWriter(traceDirectory));
 
 using var serviceProvider = services.BuildServiceProvider();
 
@@ -28,8 +28,6 @@ var instructionsLoader =
 
 var agentRunner =
     serviceProvider.GetRequiredService<IAgentRunner>();
-
-// Prepare the Team Lead's task.
 
 const string agentId = "team-lead";
 const string taskId = "STEPI-18";

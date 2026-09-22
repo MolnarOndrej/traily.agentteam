@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace Traily.AgentTeam.Runtime;
 
@@ -12,6 +13,8 @@ public sealed class CodexProcessClient
     public async Task<CodexProcessResult> ExecuteAsync(
         string workingDirectory,
         string prompt,
+        Func<string, CancellationToken, Task>? onStandardOutput,
+        Func<string, CancellationToken, Task>? onStandardError,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
@@ -45,6 +48,8 @@ public sealed class CodexProcessClient
             return await ExecuteStartedProcessAsync(
                 process,
                 prompt,
+                onStandardOutput,
+                onStandardError,
                 cancellationToken);
         }
         catch (OperationCanceledException)
@@ -99,12 +104,18 @@ public sealed class CodexProcessClient
     private static async Task<CodexProcessResult> ExecuteStartedProcessAsync(
         Process process,
         string prompt,
+        Func<string, CancellationToken, Task>? onStandardOutput,
+        Func<string, CancellationToken, Task>? onStandardError,
         CancellationToken cancellationToken)
     {
-        var outputTask = process.StandardOutput.ReadToEndAsync(
+        var outputTask = ReadOutputAsync(
+            process.StandardOutput,
+            onStandardOutput,
             cancellationToken);
 
-        var errorTask = process.StandardError.ReadToEndAsync(
+        var errorTask = ReadOutputAsync(
+            process.StandardError,
+            onStandardError,
             cancellationToken);
 
         await process.StandardInput.WriteAsync(
@@ -119,5 +130,29 @@ public sealed class CodexProcessClient
             process.ExitCode,
             await outputTask,
             await errorTask);
+    }
+
+    private static async Task<string> ReadOutputAsync(
+        StreamReader reader,
+        Func<string, CancellationToken, Task>? onStandardOutput,
+        CancellationToken cancellationToken)
+    {
+        var output = new StringBuilder();
+
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            var outputLine = line + Environment.NewLine;
+
+            output.Append(outputLine);
+
+            if (onStandardOutput is not null)
+            {
+                await onStandardOutput(
+                    outputLine,
+                    cancellationToken);
+            }
+        }
+
+        return output.ToString();
     }
 }
