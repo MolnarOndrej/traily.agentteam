@@ -1,14 +1,19 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Configuration;
-using Traily.AgentTeam.Runtime;
-using Traily.AgentTeam.Orchestration;
-using Traily.AgentTeam.WorkItems;
 using Traily.AgentTeam.Integrations.YouTrack;
+using Traily.AgentTeam.Orchestration;
+using Traily.AgentTeam.Persistence;
+using Traily.AgentTeam.Runtime;
+using Traily.AgentTeam.WorkItems;
 
 var rootDirectory = Directory.GetCurrentDirectory();
 var traceDirectory = TraceStorageConfiguration.ResolveDirectory();
 var youTrackConfiguration = YouTrackConfiguration.FromEnvironment();
+var databasePath = DatabaseStorageConfiguration.ResolvePath();
+
+DatabaseStorageConfiguration.EnsureDirectoryExists(databasePath);
 
 var services = new ServiceCollection();
 
@@ -37,6 +42,11 @@ services.AddSingleton<IWorkItemDiscovery>(
     provider =>
         provider.GetRequiredService<
             YouTrackWorkItemSource>());
+
+services.AddDbContext<TrailyDbContext>(
+    options => options.UseSqlite(
+        DatabaseStorageConfiguration.CreateConnectionString(
+            databasePath)));
 
 
 using var serviceProvider = services.BuildServiceProvider();
