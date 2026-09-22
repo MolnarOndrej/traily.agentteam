@@ -12,20 +12,20 @@ public sealed record AgentTaskInvocation(
 public sealed class AgentTaskInvoker
 {
     private readonly IAgentCatalog _agentCatalog;
-    private readonly AgentInstructionsLoader _instructionsLoader;
+    private readonly AgentInstructionsComposer _instructionsComposer;
     private readonly IAgentRunner _agentRunner;
 
     public AgentTaskInvoker(
         IAgentCatalog agentCatalog,
-        AgentInstructionsLoader instructionsLoader,
+        AgentInstructionsComposer instructionsComposer,
         IAgentRunner agentRunner)
     {
         ArgumentNullException.ThrowIfNull(agentCatalog);
-        ArgumentNullException.ThrowIfNull(instructionsLoader);
+        ArgumentNullException.ThrowIfNull(instructionsComposer);
         ArgumentNullException.ThrowIfNull(agentRunner);
 
         _agentCatalog = agentCatalog;
-        _instructionsLoader = instructionsLoader;
+        _instructionsComposer = instructionsComposer;
         _agentRunner = agentRunner;
     }
 
@@ -47,12 +47,12 @@ public sealed class AgentTaskInvoker
         ArgumentException.ThrowIfNullOrWhiteSpace(
             invocation.WorkingDirectory);
 
-        var agent = _agentCatalog.GetRequired(
-            invocation.AgentId);
-
-        var agentInstructions = await _instructionsLoader.LoadAsync(
-            agent,
+        var agent = await _agentCatalog.GetRequiredAsync(
+            invocation.AgentId,
             cancellationToken);
+
+        var agentInstructions =
+            _instructionsComposer.Compose(agent);
 
         var prompt = CreatePrompt(
             agentInstructions,

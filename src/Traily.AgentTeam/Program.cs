@@ -10,27 +10,29 @@ using Traily.AgentTeam.WorkItems;
 
 var rootDirectory = Directory.GetCurrentDirectory();
 var traceDirectory = TraceStorageConfiguration.ResolveDirectory();
-var youTrackConfiguration = YouTrackConfiguration.FromEnvironment();
 var databasePath = DatabaseStorageConfiguration.ResolvePath();
 
 DatabaseStorageConfiguration.EnsureDirectoryExists(databasePath);
 
 var services = new ServiceCollection();
 
-services.AddSingleton<IAgentCatalog, AgentCatalog>();
-services.AddSingleton(
-    _ => new AgentInstructionsLoader(rootDirectory));
 services.AddSingleton<CodexProcessClient>();
 services.AddSingleton<CodexResponseParser>();
 services.AddSingleton<IAgentRunner, CodexAgentRunner>();
 services.AddSingleton<IExecutionTraceWriter>(
     _ => new FileExecutionTraceWriter(traceDirectory));
-services.AddSingleton<AgentTaskInvoker>();
-services.AddSingleton(youTrackConfiguration);
 services.AddSingleton(
-    _ => new HttpClient
+    _ => YouTrackConfiguration.FromEnvironment());
+services.AddSingleton(
+    provider =>
     {
-        BaseAddress = youTrackConfiguration.BaseAddress
+        var configuration =
+            provider.GetRequiredService<YouTrackConfiguration>();
+
+        return new HttpClient
+        {
+            BaseAddress = configuration.BaseAddress
+        };
     });
 services.AddSingleton<YouTrackWorkItemSource>();
 services.AddSingleton<IWorkItemReader>(
@@ -48,33 +50,55 @@ services.AddDbContext<TrailyDbContext>(
         DatabaseStorageConfiguration.CreateConnectionString(
             databasePath)));
 
+services.AddScoped<IAgentCatalog, DatabaseAgentCatalog>();
+services.AddSingleton<AgentInstructionsComposer>();
+services.AddScoped<AgentTaskInvoker>();
+
 
 using var serviceProvider = services.BuildServiceProvider();
 
 if (args.Any(argument =>
     string.Equals(
         argument,
-        "--discover",
+        "--list-agents",
         StringComparison.OrdinalIgnoreCase)))
 {
-    var workItemDiscovery =
-        serviceProvider.GetRequiredService<IWorkItemDiscovery>();
+    await using var scope =
+        serviceProvider.CreateAsyncScope();
 
-    var discoveredWorkItems =
-        await workItemDiscovery.FindReadyAsync();
+    var catalog =
+        scope.ServiceProvider
+            .GetRequiredService<IAgentCatalog>();
+
+    var composer =
+        scope.ServiceProvider
+            .GetRequiredService<AgentInstructionsComposer>();
+
+    var agents = await catalog.ListAsync();
 
     Console.WriteLine(
-        $"Discovered {discoveredWorkItems.Count} " +
-        "ready work item(s).");
+        $"Found {agents.Count} agent profile(s).");
 
-    foreach (var ticketItem in discoveredWorkItems)
+    foreach (var agent in agents)
     {
+        if (!agent.IsEnabled)
+        {
+            Console.WriteLine(
+                $"{agent.Id} | disabled | {agent.Name} | " +
+                $"{agent.SkillCount} skill(s) | " +
+                $"max concurrency {agent.MaxConcurrentJobs}");
+
+            continue;
+        }
+
+        var definition = await catalog.GetRequiredAsync(agent.Id);
+        var instructions = composer.Compose(definition);
+
         Console.WriteLine(
-            $"{ticketItem.Id} | " +
-            $"{ticketItem.State} | " +
-            $"{ticketItem.AssigneeId} | " +
-            $"{ticketItem.Title} | " +
-            $"{ticketItem.UpdatedAt:O}");
+            $"{agent.Id} | enabled | {agent.Name} | " +
+            $"{definition.Skills.Count} skill(s) | " +
+            $"max concurrency {definition.MaxConcurrentJobs} | " +
+            $"{instructions.Length} composed instruction characters");
     }
 
     return;
