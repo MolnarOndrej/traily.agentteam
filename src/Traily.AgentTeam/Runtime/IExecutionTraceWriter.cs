@@ -4,10 +4,6 @@ public sealed record ExecutionTraceContext(
     string AgentId,
     string TaskId);
 
-public sealed record ExecutionTrace(
-    string OutputPath,
-    string ErrorPath);
-
 public sealed record ExecutionTraceHandle(
     string ExecutionId);
 
