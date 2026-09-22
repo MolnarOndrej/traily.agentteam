@@ -27,45 +27,81 @@ services.AddSingleton(
     {
         BaseAddress = youTrackConfiguration.BaseAddress
     });
-services.AddSingleton<
-    IWorkItemReader,
-    YouTrackWorkItemReader>();
+services.AddSingleton<YouTrackWorkItemSource>();
+services.AddSingleton<IWorkItemReader>(
+    provider =>
+        provider.GetRequiredService<
+            YouTrackWorkItemSource>());
+
+services.AddSingleton<IWorkItemDiscovery>(
+    provider =>
+        provider.GetRequiredService<
+            YouTrackWorkItemSource>());
 
 
 using var serviceProvider = services.BuildServiceProvider();
 
-var agentTaskInvoker =
-    serviceProvider.GetRequiredService<AgentTaskInvoker>();
-
-var workItemReader =
-    serviceProvider.GetRequiredService<IWorkItemReader>();
-
-const string agentId = "team-lead";
-const string taskId = "STEPI-18";
-
-var workItem =
-    await workItemReader.GetRequiredAsync(taskId);
-
-var taskDescription = $"""
-    # {workItem.Id} — {workItem.Title}
-
-    {workItem.Description}
-    """;
-
-Console.WriteLine($"Running Team Lead analysis of {taskId}...");
-
-var result = await agentTaskInvoker.InvokeAsync(
-    new AgentTaskInvocation(
-        AgentId: agentId,
-        TaskId: taskId,
-        TaskDescription: taskDescription,
-        WorkingDirectory: rootDirectory));
-
-if (!result.Success)
+if (args.Any(argument =>
+    string.Equals(
+        argument,
+        "--discover",
+        StringComparison.OrdinalIgnoreCase)))
 {
-    throw new InvalidOperationException(
-        $"Agent execution failed: {result.Output}");
+    var workItemDiscovery =
+        serviceProvider.GetRequiredService<IWorkItemDiscovery>();
+
+    var discoveredWorkItems =
+        await workItemDiscovery.FindReadyAsync();
+
+    Console.WriteLine(
+        $"Discovered {discoveredWorkItems.Count} " +
+        "ready work item(s).");
+
+    foreach (var ticketItem in discoveredWorkItems)
+    {
+        Console.WriteLine(
+            $"{ticketItem.Id} | " +
+            $"{ticketItem.State} | " +
+            $"{ticketItem.AssigneeId} | " +
+            $"{ticketItem.Title} | " +
+            $"{ticketItem.UpdatedAt:O}");
+    }
+
+    return;
 }
 
-Console.WriteLine();
-Console.WriteLine(result.Output);
+// var agentTaskInvoker =
+//     serviceProvider.GetRequiredService<AgentTaskInvoker>();
+
+// var workItemReader =
+//     serviceProvider.GetRequiredService<IWorkItemReader>();
+
+// const string agentId = "team-lead";
+// const string taskId = "STEPI-18";
+
+// var workItem =
+//     await workItemReader.GetRequiredAsync(taskId);
+
+// var taskDescription = $"""
+//     # {workItem.Id} — {workItem.Title}
+
+//     {workItem.Description}
+//     """;
+
+// Console.WriteLine($"Running Team Lead analysis of {taskId}...");
+
+// var result = await agentTaskInvoker.InvokeAsync(
+//     new AgentTaskInvocation(
+//         AgentId: agentId,
+//         TaskId: taskId,
+//         TaskDescription: taskDescription,
+//         WorkingDirectory: rootDirectory));
+
+// if (!result.Success)
+// {
+//     throw new InvalidOperationException(
+//         $"Agent execution failed: {result.Output}");
+// }
+
+// Console.WriteLine();
+// Console.WriteLine(result.Output);

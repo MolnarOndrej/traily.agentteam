@@ -78,6 +78,12 @@ analysis only. YouTrack workflow automation, specialist-agent
 execution, pull-request workflows, persistent workflow state, and automatic
 task transitions have not yet been implemented.
 
+Traily can retrieve individual work items and discover ready work
+items from YouTrack using a configured search query. Discovery
+normalizes the external workflow state and assignee identity.
+The `--discover` option performs a read-only discovery check
+without invoking an agent.
+
 ## Guiding Principles
 
 * Human approval remains mandatory for merges and releases.
