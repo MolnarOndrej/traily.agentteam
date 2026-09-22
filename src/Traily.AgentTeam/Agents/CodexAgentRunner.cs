@@ -6,16 +6,20 @@ public sealed class CodexAgentRunner : IAgentRunner
 {
     private readonly CodexProcessClient _processClient;
     private readonly CodexResponseParser _responseParser;
+    private readonly IExecutionTraceWriter _traceWriter;
 
     public CodexAgentRunner(
         CodexProcessClient processClient,
-        CodexResponseParser responseParser)
+        CodexResponseParser responseParser,
+        IExecutionTraceWriter traceWriter)
     {
         ArgumentNullException.ThrowIfNull(processClient);
         ArgumentNullException.ThrowIfNull(responseParser);
+        ArgumentNullException.ThrowIfNull(traceWriter);
 
         _processClient = processClient;
         _responseParser = responseParser;
+        _traceWriter = traceWriter;
     }
 
     public async Task<AgentResult> RunAsync(
@@ -33,6 +37,10 @@ public sealed class CodexAgentRunner : IAgentRunner
         var processResult = await _processClient.ExecuteAsync(
             request.WorkingDirectory,
             request.Instructions,
+            cancellationToken);
+
+        await _traceWriter.WriteAsync(
+            processResult,
             cancellationToken);
 
         if (processResult.ExitCode != 0)
