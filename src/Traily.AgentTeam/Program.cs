@@ -68,9 +68,8 @@ var prompt = $"""
     </task_description>
     """;
 
-// Execute the analysis.
-
 var request = new AgentRequest(
+    AgentId: agent.Id,
     AgentRole: agent.Role,
     TaskId: taskId,
     Instructions: prompt,
@@ -85,6 +84,3 @@ if (!result.Success)
     throw new InvalidOperationException(
         $"Agent execution failed: {result.Output}");
 }
-
-Console.WriteLine();
-Console.WriteLine(result.Output);

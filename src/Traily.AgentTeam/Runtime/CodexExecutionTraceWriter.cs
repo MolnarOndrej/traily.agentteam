@@ -13,14 +13,19 @@ public sealed class CodexExecutionTraceWriter : IExecutionTraceWriter
     }
 
     public async Task WriteAsync(
+        ExecutionTraceContext context,
         CodexProcessResult result,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(result);
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(context.AgentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(context.TaskId);
 
         Directory.CreateDirectory(_traceDirectory);
 
-        var executionId = CreateExecutionId();
+        var executionId = CreateExecutionId(context);
 
         var outputPath = Path.Combine(
             _traceDirectory,
@@ -44,11 +49,26 @@ public sealed class CodexExecutionTraceWriter : IExecutionTraceWriter
         }
     }
 
-    private static string CreateExecutionId()
+    private static string CreateExecutionId(
+        ExecutionTraceContext context)
     {
         var timestamp = DateTimeOffset.UtcNow
             .ToString("yyyyMMddTHHmmssfffZ");
 
-        return $"{timestamp}_{Guid.NewGuid():N}";
+        var agentId = MakeFileNameSafe(context.AgentId);
+        var taskId = MakeFileNameSafe(context.TaskId);
+
+        return $"{timestamp}_{agentId}_{taskId}_{Guid.NewGuid():N}";
+    }
+
+    private static string MakeFileNameSafe(string value)
+    {
+        var invalidCharacters = Path.GetInvalidFileNameChars();
+
+        return string.Concat(
+            value.Select(character =>
+                invalidCharacters.Contains(character)
+                    ? '_'
+                    : character));
     }
 }

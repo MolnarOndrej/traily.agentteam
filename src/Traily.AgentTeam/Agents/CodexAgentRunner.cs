@@ -27,12 +27,10 @@ public sealed class CodexAgentRunner : IAgentRunner
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        ArgumentException.ThrowIfNullOrWhiteSpace(
-            request.Instructions);
-
-        ArgumentException.ThrowIfNullOrWhiteSpace(
-            request.WorkingDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Instructions);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.WorkingDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.AgentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.TaskId);
 
         var processResult = await _processClient.ExecuteAsync(
             request.WorkingDirectory,
@@ -40,6 +38,10 @@ public sealed class CodexAgentRunner : IAgentRunner
             cancellationToken);
 
         await _traceWriter.WriteAsync(
+            new ExecutionTraceContext(
+                request.AgentId,
+                request.TaskId
+            ),
             processResult,
             cancellationToken);
 
