@@ -3,33 +3,54 @@ using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Configuration;
 using Traily.AgentTeam.Runtime;
 using Traily.AgentTeam.Orchestration;
+using Traily.AgentTeam.WorkItems;
+using Traily.AgentTeam.Integrations.YouTrack;
 
 var rootDirectory = Directory.GetCurrentDirectory();
 var traceDirectory = TraceStorageConfiguration.ResolveDirectory();
+var youTrackConfiguration = YouTrackConfiguration.FromEnvironment();
 
 var services = new ServiceCollection();
 
 services.AddSingleton<IAgentCatalog, AgentCatalog>();
-
 services.AddSingleton(
     _ => new AgentInstructionsLoader(rootDirectory));
-
 services.AddSingleton<CodexProcessClient>();
 services.AddSingleton<CodexResponseParser>();
 services.AddSingleton<IAgentRunner, CodexAgentRunner>();
 services.AddSingleton<IExecutionTraceWriter>(
     _ => new FileExecutionTraceWriter(traceDirectory));
 services.AddSingleton<AgentTaskInvoker>();
+services.AddSingleton(youTrackConfiguration);
+services.AddSingleton(
+    _ => new HttpClient
+    {
+        BaseAddress = youTrackConfiguration.BaseAddress
+    });
+services.AddSingleton<
+    IWorkItemReader,
+    YouTrackWorkItemReader>();
+
 
 using var serviceProvider = services.BuildServiceProvider();
 
 var agentTaskInvoker =
     serviceProvider.GetRequiredService<AgentTaskInvoker>();
 
+var workItemReader =
+    serviceProvider.GetRequiredService<IWorkItemReader>();
+
 const string agentId = "team-lead";
 const string taskId = "STEPI-18";
-var taskPath = Path.Combine(rootDirectory, "tasks", $"{taskId}.md");
-var taskDescription = await File.ReadAllTextAsync(taskPath);
+
+var workItem =
+    await workItemReader.GetRequiredAsync(taskId);
+
+var taskDescription = $"""
+    # {workItem.Id} — {workItem.Title}
+
+    {workItem.Description}
+    """;
 
 Console.WriteLine($"Running Team Lead analysis of {taskId}...");
 
