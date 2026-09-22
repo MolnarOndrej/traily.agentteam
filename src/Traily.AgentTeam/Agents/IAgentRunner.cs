@@ -9,7 +9,6 @@ public interface IAgentRunner
 
 public record AgentRequest(
     string AgentId,
-    string AgentRole,
     string TaskId,
     string Instructions,
     string WorkingDirectory);

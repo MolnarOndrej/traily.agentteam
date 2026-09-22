@@ -1,6 +1,6 @@
-using Traily.AgentTeam.Runtime;
+using Traily.AgentTeam.Agents;
 
-namespace Traily.AgentTeam.Agents;
+namespace Traily.AgentTeam.Runtime;
 
 public sealed class CodexAgentRunner : IAgentRunner
 {

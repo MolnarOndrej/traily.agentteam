@@ -1,4 +1,3 @@
-
 ---
 name: task-analysis
 description: Analyze software development tasks to identify objectives, requirements, acceptance criteria, dependencies, risks, and open questions.

@@ -89,7 +89,7 @@ public sealed class FileExecutionTraceWriter : IExecutionTraceWriter
     {
         return Path.Combine(
             _traceDirectory,
-            $"{trace.ExecutionId}.jsonl");
+            $"{trace.ExecutionId}.stdout.log");
     }
 
     private string GetErrorPath(

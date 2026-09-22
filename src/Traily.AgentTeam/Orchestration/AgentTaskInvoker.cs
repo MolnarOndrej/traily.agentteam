@@ -1,4 +1,5 @@
 using Traily.AgentTeam.Agents;
+using Traily.AgentTeam.Runtime;
 
 namespace Traily.AgentTeam.Orchestration;
 
@@ -60,7 +61,6 @@ public sealed class AgentTaskInvoker
         return await _agentRunner.RunAsync(
             new AgentRequest(
                 AgentId: agent.Id,
-                AgentRole: agent.Role,
                 TaskId: invocation.TaskId,
                 Instructions: prompt,
                 WorkingDirectory: invocation.WorkingDirectory),

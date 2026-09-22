@@ -64,11 +64,18 @@ The initial execution is analysis-only. Automatic task creation, implementation,
 
 Traily is in early development.
 
-The initial .NET solution, agent catalog, Team Lead role instructions, reusable task-analysis skill, and dependency injection setup are implemented.
+The current pilot registers the Team Lead agent with its role instructions
+and task-analysis skill. Tasks are invoked through a catalog-driven
+orchestration component and executed through a reusable agent runner.
 
-The next milestone is integrating Codex CLI through a reusable agent execution mechanism.
+Codex CLI execution is operational in read-only mode. Raw standard output
+and standard error are streamed to correlated local trace files for
+diagnostics and troubleshooting.
 
-The remaining agents and orchestration capabilities will be added incrementally as the pilot progresses.
+The current pilot reads `STEPI-18` from a local task file and asks the Team
+Lead to perform analysis only. YouTrack automation, specialist-agent
+execution, pull-request workflows, persistent workflow state, and automatic
+task transitions have not yet been implemented.
 
 ## Guiding Principles
 

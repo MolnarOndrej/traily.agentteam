@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Text;
 
 namespace Traily.AgentTeam.Runtime;
@@ -126,18 +127,23 @@ public sealed class CodexProcessClient
 
         await process.WaitForExitAsync(cancellationToken);
 
+        await Task.WhenAll(
+            outputTask,
+            errorTask);
+
         return new CodexProcessResult(
             process.ExitCode,
-            await outputTask,
-            await errorTask);
+            outputTask.Result,
+            errorTask.Result);
     }
 
     private static async Task<string> ReadOutputAsync(
         StreamReader reader,
-        Func<string, CancellationToken, Task>? onStandardOutput,
+        Func<string, CancellationToken, Task>? onOutput,
         CancellationToken cancellationToken)
     {
         var output = new StringBuilder();
+        ExceptionDispatchInfo? callbackFailure = null;
 
         while (await reader.ReadLineAsync(cancellationToken) is { } line)
         {
@@ -145,13 +151,29 @@ public sealed class CodexProcessClient
 
             output.Append(outputLine);
 
-            if (onStandardOutput is not null)
+            // After a trace callback fails, continue draining the process
+            // stream but do not attempt further writes to that trace channel.
+            if (onOutput is null || callbackFailure is not null)
             {
-                await onStandardOutput(
+                continue;
+            }
+
+            try
+            {
+                await onOutput(
                     outputLine,
                     cancellationToken);
             }
+            catch (Exception exception)
+                when (exception is not OperationCanceledException ||
+                      !cancellationToken.IsCancellationRequested)
+            {
+                callbackFailure =
+                    ExceptionDispatchInfo.Capture(exception);
+            }
         }
+
+        callbackFailure?.Throw();
 
         return output.ToString();
     }
