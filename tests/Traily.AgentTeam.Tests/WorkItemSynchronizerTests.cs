@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Persistence;
 using Traily.AgentTeam.WorkItems;
-using Xunit;
 
 namespace Traily.AgentTeam.Tests;
 

@@ -3,7 +3,6 @@ using System.Text;
 using System.Text.Json;
 using Traily.AgentTeam.Configuration;
 using Traily.AgentTeam.Integrations.YouTrack;
-using Xunit;
 
 namespace Traily.AgentTeam.Tests;
 
