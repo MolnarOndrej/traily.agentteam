@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Configuration;
 using Traily.AgentTeam.Integrations.YouTrack;
@@ -14,7 +15,8 @@ var databasePath = DatabaseStorageConfiguration.ResolvePath();
 
 DatabaseStorageConfiguration.EnsureDirectoryExists(databasePath);
 
-var services = new ServiceCollection();
+var builder = Host.CreateApplicationBuilder();
+var services = builder.Services;
 
 services.AddSingleton<CodexProcessClient>();
 services.AddSingleton<CodexResponseParser>();
@@ -54,8 +56,12 @@ services.AddScoped<IAgentCatalog, DatabaseAgentCatalog>();
 services.AddSingleton<AgentInstructionsComposer>();
 services.AddScoped<AgentTaskInvoker>();
 services.AddScoped<WorkItemSynchronizer>();
+services.AddSingleton(
+    _ => WorkItemPollingConfiguration.FromEnvironment());
+services.AddHostedService<WorkItemPollingService>();
 
-using var serviceProvider = services.BuildServiceProvider();
+using var host = builder.Build();
+var serviceProvider = host.Services;
 
 if (args.Any(argument =>
     string.Equals(
@@ -129,6 +135,19 @@ if (args.Any(argument =>
             $"status {result.Status?.ToString() ?? "-"}");
     }
 
+    return;
+}
+
+if (args.Any(argument =>
+    string.Equals(
+        argument,
+        "--serve",
+        StringComparison.OrdinalIgnoreCase)))
+{
+    _ = serviceProvider
+        .GetRequiredService<YouTrackConfiguration>();
+
+    await host.RunAsync();
     return;
 }
 
