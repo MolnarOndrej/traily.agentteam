@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Traily.AgentTeam.Agents;
+using Traily.AgentTeam.WorkItems;
 
 namespace Traily.AgentTeam.Persistence;
 
@@ -14,11 +15,15 @@ public sealed class TrailyDbContext(
     public DbSet<AgentExternalIdentity> AgentExternalIdentities =>
         Set<AgentExternalIdentity>();
 
+    public DbSet<WorkItemJob> WorkItemJobs =>
+        Set<WorkItemJob>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureAgentProfile(modelBuilder);
         ConfigureAgentSkill(modelBuilder);
         ConfigureAgentExternalIdentity(modelBuilder);
+        ConfigureWorkItemJob(modelBuilder);
     }
 
     private static void ConfigureAgentProfile(ModelBuilder modelBuilder)
@@ -55,6 +60,10 @@ public sealed class TrailyDbContext(
 
         profile.Property(agent => agent.UpdatedAt)
             .IsRequired();
+
+        profile.Property(agent => agent.DeletionRequestedAt);
+
+        profile.HasIndex(agent => agent.DeletionRequestedAt);
     }
 
     private static void ConfigureAgentSkill(ModelBuilder modelBuilder)
@@ -93,6 +102,85 @@ public sealed class TrailyDbContext(
 
         skill.Property(agentSkill => agentSkill.UpdatedAt)
             .IsRequired();
+    }
+
+    private static void ConfigureWorkItemJob(
+    ModelBuilder modelBuilder)
+    {
+        var job = modelBuilder.Entity<WorkItemJob>();
+
+        job.ToTable("WorkItemJobs");
+
+        job.HasKey(workItemJob => workItemJob.Id);
+
+        job.Property(workItemJob => workItemJob.Id)
+            .ValueGeneratedNever();
+
+        job.Property(workItemJob => workItemJob.SourceId)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        job.Property(workItemJob =>
+                workItemJob.ExternalWorkItemId)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        job.Property(workItemJob =>
+                workItemJob.WorkItemReference)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        job.Property(workItemJob => workItemJob.Title)
+            .HasMaxLength(500)
+            .IsRequired();
+
+        job.Property(workItemJob =>
+                workItemJob.ExternalAssigneeId)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        job.Property(workItemJob => workItemJob.AgentId)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        job.Property(workItemJob => workItemJob.Status)
+            .HasConversion<string>()
+            .HasMaxLength(50)
+            .IsRequired();
+
+        job.Property(workItemJob =>
+                workItemJob.SourceUpdatedAt)
+            .IsRequired();
+
+        job.Property(workItemJob => workItemJob.CreatedAt)
+            .IsRequired();
+
+        job.Property(workItemJob => workItemJob.UpdatedAt)
+            .IsRequired();
+
+        job.HasIndex(workItemJob => new
+        {
+            workItemJob.SourceId,
+            workItemJob.ExternalWorkItemId
+        })
+            .IsUnique();
+
+        job.HasIndex(workItemJob => new
+        {
+            workItemJob.AgentId,
+            workItemJob.Status
+        });
+
+        job.HasIndex(workItemJob => new
+        {
+            workItemJob.Status,
+            workItemJob.CreatedAt
+        });
+
+        job.HasOne(workItemJob => workItemJob.Agent)
+            .WithMany()
+            .HasForeignKey(workItemJob => workItemJob.AgentId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 
     private static void ConfigureAgentExternalIdentity(

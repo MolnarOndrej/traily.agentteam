@@ -33,6 +33,12 @@ public sealed class DatabaseAgentCatalog : IAgentCatalog
                 $"Agent '{agentId}' is not registered.");
         }
 
+        if (profile.DeletionRequestedAt is not null)
+        {
+            throw new InvalidOperationException(
+                $"Agent '{agentId}' is marked for deletion.");
+        }
+
         if (!profile.IsEnabled)
         {
             throw new InvalidOperationException(
@@ -61,6 +67,7 @@ public sealed class DatabaseAgentCatalog : IAgentCatalog
     {
         return await _dbContext.AgentProfiles
             .AsNoTracking()
+            .Where(agent => agent.DeletionRequestedAt == null)
             .OrderBy(agent => agent.Id)
             .Select(agent => new AgentSummary(
                 agent.Id,

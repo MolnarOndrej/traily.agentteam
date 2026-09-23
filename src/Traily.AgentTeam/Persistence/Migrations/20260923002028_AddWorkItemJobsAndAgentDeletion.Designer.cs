@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Traily.AgentTeam.Persistence;
 
@@ -10,9 +11,11 @@ using Traily.AgentTeam.Persistence;
 namespace Traily.AgentTeam.Persistence.Migrations
 {
     [DbContext(typeof(TrailyDbContext))]
-    partial class TrailyDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923002028_AddWorkItemJobsAndAgentDeletion")]
+    partial class AddWorkItemJobsAndAgentDeletion
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");

@@ -16,6 +16,8 @@ public sealed class AgentProfile
 
     public DateTimeOffset UpdatedAt { get; set; }
 
+    public DateTimeOffset? DeletionRequestedAt { get; set; }
+
     public ICollection<AgentSkill> Skills { get; } =
         new List<AgentSkill>();
 
