@@ -53,7 +53,7 @@ services.AddDbContext<TrailyDbContext>(
 services.AddScoped<IAgentCatalog, DatabaseAgentCatalog>();
 services.AddSingleton<AgentInstructionsComposer>();
 services.AddScoped<AgentTaskInvoker>();
-
+services.AddScoped<WorkItemSynchronizer>();
 
 using var serviceProvider = services.BuildServiceProvider();
 
@@ -99,6 +99,34 @@ if (args.Any(argument =>
             $"{definition.Skills.Count} skill(s) | " +
             $"max concurrency {definition.MaxConcurrentJobs} | " +
             $"{instructions.Length} composed instruction characters");
+    }
+
+    return;
+}
+
+if (args.Any(argument =>
+    string.Equals(
+        argument,
+        "--sync",
+        StringComparison.OrdinalIgnoreCase)))
+{
+    await using var scope =
+        serviceProvider.CreateAsyncScope();
+
+    var synchronizer = scope.ServiceProvider
+        .GetRequiredService<WorkItemSynchronizer>();
+
+    var results = await synchronizer.SyncAsync();
+
+    Console.WriteLine(
+        $"Processed {results.Count} discovered work item(s).");
+
+    foreach (var result in results)
+    {
+        Console.WriteLine(
+            $"{result.WorkItemReference} | {result.Outcome} | " +
+            $"agent {result.AgentId ?? "-"} | " +
+            $"status {result.Status?.ToString() ?? "-"}");
     }
 
     return;
