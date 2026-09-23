@@ -13,6 +13,7 @@ public sealed class YouTrackWorkItemSource
 {
     private readonly HttpClient _httpClient;
     private readonly YouTrackConfiguration _configuration;
+    private const int DiscoveryPageSize = 100;
 
     public YouTrackWorkItemSource(
         HttpClient httpClient,
@@ -84,37 +85,63 @@ public sealed class YouTrackWorkItemSource
             Uri.EscapeDataString(
                 _configuration.AssigneeField);
 
-        var requestUri =
-            "api/issues" +
-            $"?query={encodedQuery}" +
-            "&$top=100" +
-            "&fields=id,idReadable,summary,updated," +
-            "customFields(name,value(id,name,login,fullName))" +
-            $"&customFields={encodedWorkflowStateField}" +
-            $"&customFields={encodedAssigneeField}";
+        var items = new List<DiscoveredWorkItem>();
+        var seenIds = new HashSet<string>(StringComparer.Ordinal);
 
-        using var request = CreateGetRequest(requestUri);
+        for (var skip = 0; ; skip += DiscoveryPageSize)
+        {
+            var requestUri =
+                "api/issues" +
+                $"?query={encodedQuery}" +
+                $"&$skip={skip}" +
+                $"&$top={DiscoveryPageSize}" +
+                "&fields=id,idReadable,summary,updated," +
+                "customFields(name,value(id,name,login,fullName))" +
+                $"&customFields={encodedWorkflowStateField}" +
+                $"&customFields={encodedAssigneeField}";
 
-        using var response = await _httpClient.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
-
-        response.EnsureSuccessStatusCode();
-
-        var issues = await response.Content
-            .ReadFromJsonAsync<YouTrackIssueResponse[]>(
+            using var request = CreateGetRequest(requestUri);
+            using var response = await _httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken);
 
-        if (issues is null)
-        {
-            throw new InvalidDataException(
-                "YouTrack returned an invalid issue collection.");
-        }
+            response.EnsureSuccessStatusCode();
 
-        return issues
-            .Select(MapDiscoveredWorkItem)
-            .ToArray();
+            var issues = await response.Content
+                .ReadFromJsonAsync<YouTrackIssueResponse[]>(
+                    cancellationToken);
+
+            if (issues is null)
+            {
+                throw new InvalidDataException(
+                    "YouTrack returned an invalid issue collection.");
+            }
+
+            var addedThisPage = 0;
+
+            foreach (var issue in issues)
+            {
+                var item = MapDiscoveredWorkItem(issue);
+
+                if (seenIds.Add(item.ExternalWorkItemId))
+                {
+                    items.Add(item);
+                    addedThisPage++;
+                }
+            }
+
+            if (issues.Length < DiscoveryPageSize)
+            {
+                return items;
+            }
+
+            if (addedThisPage == 0)
+            {
+                throw new InvalidDataException(
+                    "YouTrack pagination made no progress.");
+            }
+        }
     }
 
     private HttpRequestMessage CreateGetRequest(
