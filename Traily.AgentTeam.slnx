@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Traily.AgentTeam/Traily.AgentTeam.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Traily.AgentTeam.Tests/Traily.AgentTeam.Tests.csproj" />
+  </Folder>
 </Solution>
