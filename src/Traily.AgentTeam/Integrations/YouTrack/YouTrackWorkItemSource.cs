@@ -56,7 +56,7 @@ public sealed class YouTrackWorkItemSource
                 cancellationToken);
 
         if (issue is null ||
-            string.IsNullOrWhiteSpace(issue.Id) ||
+            string.IsNullOrWhiteSpace(issue.IdReadable) ||
             string.IsNullOrWhiteSpace(issue.Summary))
         {
             throw new InvalidDataException(
@@ -65,14 +65,13 @@ public sealed class YouTrackWorkItemSource
         }
 
         return new WorkItem(
-            issue.Id,
+            issue.IdReadable,
             issue.Summary,
             issue.Description ?? string.Empty);
     }
 
     public async Task<IReadOnlyList<DiscoveredWorkItem>>
-        FindReadyAsync(
-            CancellationToken cancellationToken = default)
+        FindReadyAsync(CancellationToken cancellationToken = default)
     {
         var encodedQuery = Uri.EscapeDataString(
             _configuration.DiscoveryQuery);
@@ -89,8 +88,8 @@ public sealed class YouTrackWorkItemSource
             "api/issues" +
             $"?query={encodedQuery}" +
             "&$top=100" +
-            "&fields=idReadable,summary,updated," +
-            "customFields(name,value(name,login))" +
+            "&fields=id,idReadable,summary,updated," +
+            "customFields(name,value(id,name,login,fullName))" +
             $"&customFields={encodedWorkflowStateField}" +
             $"&customFields={encodedAssigneeField}";
 
@@ -140,7 +139,8 @@ public sealed class YouTrackWorkItemSource
     private DiscoveredWorkItem MapDiscoveredWorkItem(
         YouTrackIssueResponse issue)
     {
-        if (string.IsNullOrWhiteSpace(issue.Id) ||
+        if (string.IsNullOrWhiteSpace(issue.ExternalId) ||
+            string.IsNullOrWhiteSpace(issue.IdReadable) ||
             string.IsNullOrWhiteSpace(issue.Summary) ||
             issue.Updated is null)
         {
@@ -157,35 +157,41 @@ public sealed class YouTrackWorkItemSource
             ?.Value
             ?.Name;
 
-        var assigneeId = issue.CustomFields?
+        var assignee = issue.CustomFields?
             .SingleOrDefault(field =>
                 string.Equals(
                     field.Name,
                     _configuration.AssigneeField,
                     StringComparison.OrdinalIgnoreCase))
-            ?.Value
-            ?.Login;
+            ?.Value;
 
         if (string.IsNullOrWhiteSpace(state) ||
-            string.IsNullOrWhiteSpace(assigneeId))
+            string.IsNullOrWhiteSpace(assignee?.Id) ||
+            string.IsNullOrWhiteSpace(assignee?.Login))
         {
             throw new InvalidDataException(
-                $"YouTrack work item '{issue.Id}' has incomplete " +
+                $"YouTrack work item '{issue.IdReadable}' has incomplete " +
                 "state or assignee data.");
         }
 
         return new DiscoveredWorkItem(
-            issue.Id,
+            _configuration.SourceId,
+            issue.ExternalId,
+            issue.IdReadable,
             issue.Summary,
             state,
-            assigneeId,
+            assignee.Id,
+            assignee.Login,
+            assignee.FullName ?? assignee.Name,
             DateTimeOffset.FromUnixTimeMilliseconds(
                 issue.Updated.Value));
     }
 
     private sealed record YouTrackIssueResponse(
+        [property: JsonPropertyName("id")]
+        string? ExternalId,
         [property: JsonPropertyName("idReadable")]
-        string? Id,
+        string? IdReadable,
         [property: JsonPropertyName("summary")]
         string? Summary,
         [property: JsonPropertyName("description")]
@@ -202,8 +208,12 @@ public sealed class YouTrackWorkItemSource
         YouTrackFieldValueResponse? Value);
 
     private sealed record YouTrackFieldValueResponse(
+        [property: JsonPropertyName("id")]
+        string? Id,
         [property: JsonPropertyName("name")]
         string? Name,
         [property: JsonPropertyName("login")]
-        string? Login);
+        string? Login,
+        [property: JsonPropertyName("fullName")]
+        string? FullName);
 }

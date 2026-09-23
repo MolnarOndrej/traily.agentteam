@@ -1,11 +1,15 @@
 namespace Traily.AgentTeam.WorkItems;
 
 public sealed record DiscoveredWorkItem(
-    string Id,
+    string SourceId,
+    string ExternalWorkItemId,
+    string WorkItemReference,
     string Title,
     string State,
-    string AssigneeId,
-    DateTimeOffset UpdatedAt);
+    string ExternalAssigneeId,
+    string AssigneeLogin,
+    string? AssigneeDisplayName,
+    DateTimeOffset SourceUpdatedAt);
 
 public interface IWorkItemDiscovery
 {

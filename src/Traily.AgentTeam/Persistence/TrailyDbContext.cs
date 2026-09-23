@@ -104,8 +104,7 @@ public sealed class TrailyDbContext(
             .IsRequired();
     }
 
-    private static void ConfigureWorkItemJob(
-    ModelBuilder modelBuilder)
+    private static void ConfigureWorkItemJob(ModelBuilder modelBuilder)
     {
         var job = modelBuilder.Entity<WorkItemJob>();
 
@@ -183,8 +182,7 @@ public sealed class TrailyDbContext(
             .OnDelete(DeleteBehavior.Restrict);
     }
 
-    private static void ConfigureAgentExternalIdentity(
-        ModelBuilder modelBuilder)
+    private static void ConfigureAgentExternalIdentity(ModelBuilder modelBuilder)
     {
         var identity = modelBuilder.Entity<AgentExternalIdentity>();
 

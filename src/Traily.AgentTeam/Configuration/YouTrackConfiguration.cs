@@ -17,6 +17,9 @@ public sealed class YouTrackConfiguration
     public const string AssigneeFieldEnvironmentVariable =
         "TRAILY_YOUTRACK_ASSIGNEE_FIELD";
 
+    public const string SourceIdEnvironmentVariable =
+        "TRAILY_YOUTRACK_SOURCE_ID";
+
     private const string DefaultWorkflowStateField = "Stage";
     private const string DefaultAssigneeField = "Assignee";
 
@@ -25,13 +28,15 @@ public sealed class YouTrackConfiguration
         string accessToken,
         string discoveryQuery,
         string workflowStateField,
-        string assigneeField)
+        string assigneeField,
+        string sourceId)
     {
         BaseAddress = baseAddress;
         AccessToken = accessToken;
         DiscoveryQuery = discoveryQuery;
         WorkflowStateField = workflowStateField;
         AssigneeField = assigneeField;
+        SourceId = sourceId;
     }
 
     public Uri BaseAddress { get; }
@@ -43,6 +48,8 @@ public sealed class YouTrackConfiguration
     public string WorkflowStateField { get; }
 
     public string AssigneeField { get; }
+
+    public string SourceId { get; }
 
     public static YouTrackConfiguration FromEnvironment()
     {
@@ -83,6 +90,15 @@ public sealed class YouTrackConfiguration
                 $"Configure {DiscoveryQueryEnvironmentVariable}.");
         }
 
+        var sourceId =
+            Environment.GetEnvironmentVariable(SourceIdEnvironmentVariable);
+
+        if (string.IsNullOrWhiteSpace(sourceId))
+        {
+            throw new InvalidOperationException(
+                $"Configure {SourceIdEnvironmentVariable}.");
+        }
+
         var workflowStateField = ResolveOptionalValue(
             WorkflowStateFieldEnvironmentVariable,
             DefaultWorkflowStateField);
@@ -96,7 +112,8 @@ public sealed class YouTrackConfiguration
             accessToken.Trim(),
             discoveryQuery.Trim(),
             workflowStateField,
-            assigneeField);
+            assigneeField,
+            sourceId.Trim());
     }
 
     private static string ResolveOptionalValue(
