@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Traily.AgentTeam.Agents;
+using Traily.AgentTeam.Git;
 using Traily.AgentTeam.WorkItems;
 
 namespace Traily.AgentTeam.Persistence;
@@ -21,6 +22,15 @@ public sealed class TrailyDbContext(
     public DbSet<WorkItemExecutionAttempt> WorkItemExecutionAttempts =>
         Set<WorkItemExecutionAttempt>();
 
+    public DbSet<ManagedProject> ManagedProjects =>
+        Set<ManagedProject>();
+
+    public DbSet<GitRepository> GitRepositories =>
+        Set<GitRepository>();
+
+    public DbSet<AgentRepositoryAccess> AgentRepositoryAccesses =>
+        Set<AgentRepositoryAccess>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureAgentProfile(modelBuilder);
@@ -28,6 +38,9 @@ public sealed class TrailyDbContext(
         ConfigureAgentExternalIdentity(modelBuilder);
         ConfigureWorkItemJob(modelBuilder);
         ConfigureWorkItemExecutionAttempt(modelBuilder);
+        ConfigureManagedProject(modelBuilder);
+        ConfigureGitRepository(modelBuilder);
+        ConfigureAgentRepositoryAccess(modelBuilder);
     }
 
     private static void ConfigureAgentProfile(ModelBuilder modelBuilder)
@@ -275,11 +288,114 @@ public sealed class TrailyDbContext(
         attempt.Property(entry => entry.WorkingDirectory)
             .HasMaxLength(2000);
 
+        attempt.Property(entry => entry.StopReason)
+            .HasConversion<string>()
+            .HasMaxLength(100);
+
+        attempt.Property(entry => entry.TaskSourceUpdatedAt);
+
         attempt.HasIndex(entry => entry.WorkItemJobId);
 
         attempt.HasOne(entry => entry.Job)
             .WithMany()
             .HasForeignKey(entry => entry.WorkItemJobId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+
+    private static void ConfigureManagedProject(ModelBuilder modelBuilder)
+    {
+        var project = modelBuilder.Entity<ManagedProject>();
+
+        project.ToTable("ManagedProjects");
+        project.HasKey(entry => entry.SourceId);
+
+        project.Property(entry => entry.SourceId)
+            .HasMaxLength(100)
+            .ValueGeneratedNever();
+
+        project.Property(entry => entry.Name)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        project.Property(entry => entry.CreatedAt).IsRequired();
+        project.Property(entry => entry.UpdatedAt).IsRequired();
+    }
+
+    private static void ConfigureGitRepository(ModelBuilder modelBuilder)
+    {
+        var repository = modelBuilder.Entity<GitRepository>();
+
+        repository.ToTable("GitRepositories");
+        repository.HasKey(entry => entry.Id);
+
+        repository.Property(entry => entry.Id)
+            .HasMaxLength(100)
+            .ValueGeneratedNever();
+
+        repository.Property(entry => entry.SourceId)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        repository.Property(entry => entry.Name)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        repository.Property(entry => entry.RemoteUrl)
+            .HasMaxLength(2000)
+            .IsRequired();
+
+        repository.Property(entry => entry.BaseBranch)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        repository.Property(entry => entry.LocalPathOverride)
+            .HasMaxLength(2000);
+
+        repository.Property(entry => entry.CreatedAt).IsRequired();
+        repository.Property(entry => entry.UpdatedAt).IsRequired();
+
+        repository.HasIndex(entry => entry.SourceId);
+
+        repository.HasOne(entry => entry.Project)
+            .WithMany()
+            .HasForeignKey(entry => entry.SourceId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+
+    private static void ConfigureAgentRepositoryAccess(
+        ModelBuilder modelBuilder)
+    {
+        var access = modelBuilder.Entity<AgentRepositoryAccess>();
+
+        access.ToTable("AgentRepositoryAccesses");
+
+        access.HasKey(entry => new
+        {
+            entry.AgentId,
+            entry.RepositoryId
+        });
+
+        access.Property(entry => entry.AgentId)
+            .HasMaxLength(100);
+
+        access.Property(entry => entry.RepositoryId)
+            .HasMaxLength(100);
+
+        access.Property(entry => entry.Level)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
+        access.HasIndex(entry => entry.RepositoryId);
+
+        access.HasOne(entry => entry.Agent)
+            .WithMany()
+            .HasForeignKey(entry => entry.AgentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        access.HasOne(entry => entry.Repository)
+            .WithMany()
+            .HasForeignKey(entry => entry.RepositoryId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -30,6 +30,8 @@ public sealed class AgentTaskInvoker
 
     public async Task<AgentResult> InvokeAsync(
         AgentTaskInvocation invocation,
+        Func<string, CancellationToken, Task>?
+            onSessionAvailable = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(invocation);
@@ -63,6 +65,7 @@ public sealed class AgentTaskInvoker
                 TaskId: invocation.TaskId,
                 Instructions: prompt,
                 WorkingDirectory: invocation.WorkingDirectory),
+            onSessionAvailable,
             cancellationToken);
     }
 

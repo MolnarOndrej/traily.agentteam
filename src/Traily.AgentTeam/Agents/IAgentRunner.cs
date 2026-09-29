@@ -4,6 +4,8 @@ public interface IAgentRunner
 {
     Task<AgentResult> RunAsync(
         AgentRequest request,
+        Func<string, CancellationToken, Task>?
+            onSessionAvailable = null,
         CancellationToken cancellationToken = default);
 }
 

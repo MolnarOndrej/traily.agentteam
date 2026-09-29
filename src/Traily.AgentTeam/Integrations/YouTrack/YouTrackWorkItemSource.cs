@@ -27,17 +27,29 @@ public sealed class YouTrackWorkItemSource
     }
 
     public async Task<WorkItem> GetRequiredAsync(
-        string workItemId,
+        string sourceId,
+        string externalWorkItemId,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(workItemId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(externalWorkItemId);
 
-        var encodedWorkItemId =
-            Uri.EscapeDataString(workItemId);
+        if (!string.Equals(
+            sourceId,
+            _configuration.SourceId,
+            StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"Unsupported work source '{sourceId}'.",
+                nameof(sourceId));
+        }
+
+        var encodedId = Uri.EscapeDataString(externalWorkItemId);
 
         using var request = CreateGetRequest(
-            $"api/issues/{encodedWorkItemId}" +
-            "?fields=idReadable,summary,description");
+            $"api/issues/{encodedId}" +
+            "?fields=id,idReadable,summary,description,updated," +
+            "customFields(name,value(id,name))");
 
         using var response = await _httpClient.SendAsync(
             request,
@@ -47,7 +59,7 @@ public sealed class YouTrackWorkItemSource
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             throw new KeyNotFoundException(
-                $"YouTrack work item '{workItemId}' was not found.");
+                $"YouTrack work item '{externalWorkItemId}' was not found.");
         }
 
         response.EnsureSuccessStatusCode();
@@ -57,18 +69,53 @@ public sealed class YouTrackWorkItemSource
                 cancellationToken);
 
         if (issue is null ||
+            string.IsNullOrWhiteSpace(issue.ExternalId) ||
+            !string.Equals(
+                issue.ExternalId,
+                externalWorkItemId,
+                StringComparison.Ordinal) ||
             string.IsNullOrWhiteSpace(issue.IdReadable) ||
-            string.IsNullOrWhiteSpace(issue.Summary))
+            string.IsNullOrWhiteSpace(issue.Summary) ||
+            issue.Updated is null)
         {
             throw new InvalidDataException(
-                $"YouTrack returned incomplete data for " +
-                $"work item '{workItemId}'.");
+                $"YouTrack returned incomplete or mismatched data for " +
+                $"work item '{externalWorkItemId}'.");
+        }
+
+        var state = issue.CustomFields?
+            .SingleOrDefault(field =>
+                string.Equals(
+                    field.Name,
+                    _configuration.WorkflowStateField,
+                    StringComparison.OrdinalIgnoreCase))
+            ?.Value?.Name;
+
+        var assigneeId = issue.CustomFields?
+            .SingleOrDefault(field =>
+                string.Equals(
+                    field.Name,
+                    _configuration.AssigneeField,
+                    StringComparison.OrdinalIgnoreCase))
+            ?.Value?.Id;
+
+        if (string.IsNullOrWhiteSpace(state) ||
+            string.IsNullOrWhiteSpace(assigneeId))
+        {
+            throw new InvalidDataException(
+                $"YouTrack work item '{issue.IdReadable}' has incomplete " +
+                "state or assignee data.");
         }
 
         return new WorkItem(
+            issue.ExternalId,
             issue.IdReadable,
             issue.Summary,
-            issue.Description ?? string.Empty);
+            issue.Description ?? string.Empty,
+            state,
+            assigneeId,
+            DateTimeOffset.FromUnixTimeMilliseconds(
+                issue.Updated.Value));
     }
 
     public async Task<IReadOnlyList<DiscoveredWorkItem>>

@@ -23,8 +23,13 @@ public sealed class WorkItemExecutionAttempt
     // Filled before execution, using the latest full ticket.
     public string? TaskSnapshot { get; set; }
 
+    // Ticket revision used to create TaskSnapshot.
+    public DateTimeOffset? TaskSourceUpdatedAt { get; set; }
+
     // The specific workspace used by this attempt.
     public string? WorkingDirectory { get; set; }
+
+    public WorkItemStopReason? StopReason { get; set; }
 
     public WorkItemJob Job { get; set; } = null!;
 }

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Configuration;
+using Traily.AgentTeam.Git;
 using Traily.AgentTeam.Integrations.YouTrack;
 using Traily.AgentTeam.Orchestration;
 using Traily.AgentTeam.Persistence;
@@ -23,7 +24,9 @@ public static class TrailyServiceRegistration
         DatabaseStorageConfiguration.EnsureDirectoryExists(
             databasePath);
 
-        services.AddSingleton<CodexProcessClient>();
+        services.AddSingleton<ICodexProcessClient, CodexProcessClient>();
+        services.AddScoped<IWorkItemExecutionProvider, CodexWorkItemExecutionProvider>();
+        services.AddScoped<WorkItemExecutionWorker>();
         services.AddSingleton<CodexResponseParser>();
         services.AddSingleton<IAgentRunner, CodexAgentRunner>();
         services.AddSingleton<IExecutionTraceWriter>(
@@ -69,6 +72,7 @@ public static class TrailyServiceRegistration
         services.AddHostedService<WorkItemPollingService>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<WorkItemClaimService>();
+        services.AddScoped<RepositoryAccessService>();
 
         return services;
     }

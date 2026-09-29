@@ -9,14 +9,60 @@ public sealed record CodexProcessResult(
     string StandardOutput,
     string StandardError);
 
-public sealed class CodexProcessClient
+public interface ICodexProcessClient
 {
-    public async Task<CodexProcessResult> ExecuteAsync(
+    Task<CodexProcessResult> ExecuteAsync(
+        string workingDirectory,
+        string prompt,
+        Func<string, CancellationToken, Task>? onStandardOutput,
+        Func<string, CancellationToken, Task>? onStandardError,
+        CancellationToken cancellationToken = default);
+
+    Task<CodexProcessResult> ResumeAsync(
+        string workingDirectory,
+        string sessionId,
+        string prompt,
+        Func<string, CancellationToken, Task>? onStandardOutput,
+        Func<string, CancellationToken, Task>? onStandardError,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class CodexProcessClient : ICodexProcessClient
+{
+    public Task<CodexProcessResult> ExecuteAsync(
         string workingDirectory,
         string prompt,
         Func<string, CancellationToken, Task>? onStandardOutput,
         Func<string, CancellationToken, Task>? onStandardError,
         CancellationToken cancellationToken = default)
+    {
+        return RunAsync(
+            workingDirectory, null, prompt,
+            onStandardOutput, onStandardError, cancellationToken);
+    }
+
+    public Task<CodexProcessResult> ResumeAsync(
+        string workingDirectory,
+        string sessionId,
+        string prompt,
+        Func<string, CancellationToken, Task>? onStandardOutput,
+        Func<string, CancellationToken, Task>? onStandardError,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+
+        return RunAsync(
+            workingDirectory, sessionId, prompt,
+            onStandardOutput, onStandardError, cancellationToken);
+    }
+
+    private async Task<CodexProcessResult> RunAsync(
+        string workingDirectory,
+        string? sessionId,
+        string prompt,
+        Func<string, CancellationToken, Task>? onStandardOutput,
+        Func<string, CancellationToken, Task>? onStandardError,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
@@ -29,11 +75,9 @@ public sealed class CodexProcessClient
                 $"Working directory not found: {fullPath}");
         }
 
-        var startInfo = CreateStartInfo(fullPath);
-
         using var process = new Process
         {
-            StartInfo = startInfo
+            StartInfo = CreateStartInfo(fullPath, sessionId)
         };
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -44,32 +88,14 @@ public sealed class CodexProcessClient
                 "Failed to start Codex CLI.");
         }
 
-        try
-        {
-            return await ExecuteStartedProcessAsync(
-                process,
-                prompt,
-                onStandardOutput,
-                onStandardError,
-                cancellationToken);
-        }
-        catch (OperationCanceledException)
-            when (cancellationToken.IsCancellationRequested)
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-
-            await process.WaitForExitAsync(
-                CancellationToken.None);
-
-            throw;
-        }
+        return await ExecuteStartedProcessAsync(
+            process, prompt, onStandardOutput,
+            onStandardError, cancellationToken);
     }
 
     private static ProcessStartInfo CreateStartInfo(
-        string workingDirectory)
+        string workingDirectory,
+        string? sessionId)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -82,19 +108,23 @@ public sealed class CodexProcessClient
             RedirectStandardError = true
         };
 
-        foreach (var argument in new[]
-        {
-            "/d",
-            "/c",
-            "codex.cmd",
-            "exec",
-            "--sandbox", "read-only",
-            "--json",
-            "--ephemeral",
-            "--ignore-user-config",
-            "-C", workingDirectory,
-            "-"
-        })
+        var arguments = sessionId is null
+            ? new[]
+            {
+                "/d", "/c", "codex.cmd", "exec",
+                "--sandbox", "read-only",
+                "--json", "--ignore-user-config",
+                "-C", workingDirectory, "-"
+            }
+            : new[]
+            {
+                "/d", "/c", "codex.cmd", "exec", "resume",
+                "--json", "--ignore-user-config",
+                "-c", "sandbox_mode=read-only",
+                sessionId, "-"
+            };
+
+        foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -102,78 +132,129 @@ public sealed class CodexProcessClient
         return startInfo;
     }
 
-    private static async Task<CodexProcessResult> ExecuteStartedProcessAsync(
-        Process process,
-        string prompt,
-        Func<string, CancellationToken, Task>? onStandardOutput,
-        Func<string, CancellationToken, Task>? onStandardError,
-        CancellationToken cancellationToken)
+    private static async Task<CodexProcessResult>
+        ExecuteStartedProcessAsync(
+            Process process,
+            string prompt,
+            Func<string, CancellationToken, Task>? onStandardOutput,
+            Func<string, CancellationToken, Task>? onStandardError,
+            CancellationToken cancellationToken)
     {
+        using var stopSource =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
+
+        var callbackFailure =
+            new TaskCompletionSource<ExceptionDispatchInfo>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // These readers keep draining after a callback fails. The process
+        // is stopped by the linked token and cleaned up below.
         var outputTask = ReadOutputAsync(
             process.StandardOutput,
             onStandardOutput,
-            cancellationToken);
+            stopSource,
+            callbackFailure);
 
         var errorTask = ReadOutputAsync(
             process.StandardError,
             onStandardError,
-            cancellationToken);
+            stopSource,
+            callbackFailure);
 
-        await process.StandardInput.WriteAsync(
-            prompt.AsMemory(),
-            cancellationToken);
+        try
+        {
+            await process.StandardInput.WriteAsync(
+                prompt.AsMemory(),
+                stopSource.Token);
 
-        process.StandardInput.Close();
+            process.StandardInput.Close();
 
-        await process.WaitForExitAsync(cancellationToken);
+            await process.WaitForExitAsync(stopSource.Token);
+            await Task.WhenAll(outputTask, errorTask);
 
-        await Task.WhenAll(
-            outputTask,
-            errorTask);
+            if (callbackFailure.Task.IsCompletedSuccessfully)
+            {
+                callbackFailure.Task.Result.Throw();
+            }
 
-        return new CodexProcessResult(
-            process.ExitCode,
-            outputTask.Result,
-            errorTask.Result);
+            return new CodexProcessResult(
+                process.ExitCode,
+                outputTask.Result,
+                errorTask.Result);
+        }
+        catch
+        {
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                    when (process.HasExited)
+                {
+                    // The process exited between the check and Kill.
+                }
+            }
+
+            await process.WaitForExitAsync(CancellationToken.None);
+
+            // Killing the process closes its redirected pipes. Always
+            // finish observing both readers before disposing Process.
+            try
+            {
+                await Task.WhenAll(outputTask, errorTask);
+            }
+            catch
+            {
+                // Preserve the cancellation or original failure below.
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (callbackFailure.Task.IsCompletedSuccessfully)
+            {
+                callbackFailure.Task.Result.Throw();
+            }
+
+            throw;
+        }
     }
 
     private static async Task<string> ReadOutputAsync(
         StreamReader reader,
         Func<string, CancellationToken, Task>? onOutput,
-        CancellationToken cancellationToken)
+        CancellationTokenSource stopSource,
+        TaskCompletionSource<ExceptionDispatchInfo> callbackFailure)
     {
         var output = new StringBuilder();
-        ExceptionDispatchInfo? callbackFailure = null;
 
-        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        // Do not cancel pipe reads: after stopping the child, drain
+        // what it already wrote and wait for the pipe to close.
+        while (await reader.ReadLineAsync() is { } line)
         {
             var outputLine = line + Environment.NewLine;
-
             output.Append(outputLine);
 
-            // After a trace callback fails, continue draining the process
-            // stream but do not attempt further writes to that trace channel.
-            if (onOutput is null || callbackFailure is not null)
+            if (onOutput is null ||
+                callbackFailure.Task.IsCompleted)
             {
                 continue;
             }
 
             try
             {
-                await onOutput(
-                    outputLine,
-                    cancellationToken);
+                await onOutput(outputLine, stopSource.Token);
             }
             catch (Exception exception)
-                when (exception is not OperationCanceledException ||
-                      !cancellationToken.IsCancellationRequested)
             {
-                callbackFailure =
-                    ExceptionDispatchInfo.Capture(exception);
+                callbackFailure.TrySetResult(
+                    ExceptionDispatchInfo.Capture(exception));
+
+                stopSource.Cancel();
             }
         }
-
-        callbackFailure?.Throw();
 
         return output.ToString();
     }

@@ -64,6 +64,29 @@ public sealed class CodexResponseParser
             finalMessage);
     }
 
+    public string? GetStartedSessionId(string jsonLine)
+    {
+        ArgumentNullException.ThrowIfNull(jsonLine);
+
+        using var document = JsonDocument.Parse(jsonLine);
+        var root = document.RootElement;
+
+        if (!root.TryGetProperty("type", out var type) ||
+            type.GetString() != "thread.started")
+        {
+            return null;
+        }
+
+        if (!root.TryGetProperty("thread_id", out var id) ||
+            string.IsNullOrWhiteSpace(id.GetString()))
+        {
+            throw new InvalidDataException(
+                "Codex started a thread without a session ID.");
+        }
+
+        return id.GetString();
+    }
+
     private static string? GetAgentMessage(
         JsonElement root)
     {
