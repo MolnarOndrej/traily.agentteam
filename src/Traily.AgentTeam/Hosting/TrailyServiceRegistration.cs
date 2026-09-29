@@ -67,6 +67,8 @@ public static class TrailyServiceRegistration
         services.AddSingleton(
             _ => WorkItemPollingConfiguration.FromEnvironment());
         services.AddHostedService<WorkItemPollingService>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<WorkItemClaimService>();
 
         return services;
     }

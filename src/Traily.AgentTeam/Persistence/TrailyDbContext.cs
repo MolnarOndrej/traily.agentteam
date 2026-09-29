@@ -18,12 +18,16 @@ public sealed class TrailyDbContext(
     public DbSet<WorkItemJob> WorkItemJobs =>
         Set<WorkItemJob>();
 
+    public DbSet<WorkItemExecutionAttempt> WorkItemExecutionAttempts =>
+        Set<WorkItemExecutionAttempt>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureAgentProfile(modelBuilder);
         ConfigureAgentSkill(modelBuilder);
         ConfigureAgentExternalIdentity(modelBuilder);
         ConfigureWorkItemJob(modelBuilder);
+        ConfigureWorkItemExecutionAttempt(modelBuilder);
     }
 
     private static void ConfigureAgentProfile(ModelBuilder modelBuilder)
@@ -104,84 +108,6 @@ public sealed class TrailyDbContext(
             .IsRequired();
     }
 
-    private static void ConfigureWorkItemJob(ModelBuilder modelBuilder)
-    {
-        var job = modelBuilder.Entity<WorkItemJob>();
-
-        job.ToTable("WorkItemJobs");
-
-        job.HasKey(workItemJob => workItemJob.Id);
-
-        job.Property(workItemJob => workItemJob.Id)
-            .ValueGeneratedNever();
-
-        job.Property(workItemJob => workItemJob.SourceId)
-            .HasMaxLength(100)
-            .IsRequired();
-
-        job.Property(workItemJob =>
-                workItemJob.ExternalWorkItemId)
-            .HasMaxLength(200)
-            .IsRequired();
-
-        job.Property(workItemJob =>
-                workItemJob.WorkItemReference)
-            .HasMaxLength(200)
-            .IsRequired();
-
-        job.Property(workItemJob => workItemJob.Title)
-            .HasMaxLength(500)
-            .IsRequired();
-
-        job.Property(workItemJob =>
-                workItemJob.ExternalAssigneeId)
-            .HasMaxLength(200)
-            .IsRequired();
-
-        job.Property(workItemJob => workItemJob.AgentId)
-            .HasMaxLength(100)
-            .IsRequired();
-
-        job.Property(workItemJob => workItemJob.Status)
-            .HasConversion<string>()
-            .HasMaxLength(50)
-            .IsRequired();
-
-        job.Property(workItemJob =>
-                workItemJob.SourceUpdatedAt)
-            .IsRequired();
-
-        job.Property(workItemJob => workItemJob.CreatedAt)
-            .IsRequired();
-
-        job.Property(workItemJob => workItemJob.UpdatedAt)
-            .IsRequired();
-
-        job.HasIndex(workItemJob => new
-        {
-            workItemJob.SourceId,
-            workItemJob.ExternalWorkItemId
-        })
-            .IsUnique();
-
-        job.HasIndex(workItemJob => new
-        {
-            workItemJob.AgentId,
-            workItemJob.Status
-        });
-
-        job.HasIndex(workItemJob => new
-        {
-            workItemJob.Status,
-            workItemJob.CreatedAt
-        });
-
-        job.HasOne(workItemJob => workItemJob.Agent)
-            .WithMany()
-            .HasForeignKey(workItemJob => workItemJob.AgentId)
-            .OnDelete(DeleteBehavior.Restrict);
-    }
-
     private static void ConfigureAgentExternalIdentity(ModelBuilder modelBuilder)
     {
         var identity = modelBuilder.Entity<AgentExternalIdentity>();
@@ -236,5 +162,124 @@ public sealed class TrailyDbContext(
         identity.Property(externalIdentity =>
                 externalIdentity.UpdatedAt)
             .IsRequired();
+    }
+
+    private static void ConfigureWorkItemJob(ModelBuilder modelBuilder)
+    {
+        var job = modelBuilder.Entity<WorkItemJob>();
+
+        job.ToTable("WorkItemJobs");
+
+        job.HasKey(workItemJob => workItemJob.Id);
+
+        job.Property(workItemJob => workItemJob.Id)
+            .ValueGeneratedNever();
+
+        job.Property(workItemJob => workItemJob.SourceId)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        job.Property(workItemJob =>
+                workItemJob.ExternalWorkItemId)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        job.Property(workItemJob =>
+                workItemJob.WorkItemReference)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        job.Property(workItemJob => workItemJob.Title)
+            .HasMaxLength(500)
+            .IsRequired();
+
+        job.Property(workItemJob =>
+                workItemJob.ExternalAssigneeId)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        job.Property(workItemJob => workItemJob.AgentId)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        job.Property(workItemJob => workItemJob.Status)
+            .HasConversion<string>()
+            .HasMaxLength(50)
+            .IsRequired();
+
+        job.Property(workItemJob => workItemJob.CurrentAttemptId);
+
+        job.Property(workItemJob =>
+                workItemJob.SourceUpdatedAt)
+            .IsRequired();
+
+        job.Property(workItemJob => workItemJob.CreatedAt)
+            .IsRequired();
+
+        job.Property(workItemJob => workItemJob.UpdatedAt)
+            .IsRequired();
+
+        job.HasIndex(workItemJob => new
+        {
+            workItemJob.SourceId,
+            workItemJob.ExternalWorkItemId
+        })
+            .IsUnique();
+
+        job.HasIndex(workItemJob => new
+        {
+            workItemJob.AgentId,
+            workItemJob.Status
+        });
+
+        job.HasIndex(workItemJob => new
+        {
+            workItemJob.Status,
+            workItemJob.CreatedAt
+        });
+
+        job.HasOne(workItemJob => workItemJob.Agent)
+            .WithMany()
+            .HasForeignKey(workItemJob => workItemJob.AgentId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+
+    private static void ConfigureWorkItemExecutionAttempt(ModelBuilder modelBuilder)
+    {
+        var attempt = modelBuilder.Entity<WorkItemExecutionAttempt>();
+
+        attempt.ToTable("WorkItemExecutionAttempts");
+
+        attempt.HasKey(entry => entry.Id);
+
+        attempt.Property(entry => entry.Id)
+            .ValueGeneratedNever();
+
+        attempt.Property(entry => entry.WorkItemJobId)
+            .IsRequired();
+
+        attempt.Property(entry => entry.CreatedAt)
+            .IsRequired();
+
+        attempt.Property(entry => entry.StartedAt);
+        attempt.Property(entry => entry.FinishedAt);
+
+        attempt.Property(entry => entry.ProviderId)
+            .HasMaxLength(100);
+
+        attempt.Property(entry => entry.ProviderSessionId)
+            .HasMaxLength(300);
+
+        attempt.Property(entry => entry.TaskSnapshot);
+
+        attempt.Property(entry => entry.WorkingDirectory)
+            .HasMaxLength(2000);
+
+        attempt.HasIndex(entry => entry.WorkItemJobId);
+
+        attempt.HasOne(entry => entry.Job)
+            .WithMany()
+            .HasForeignKey(entry => entry.WorkItemJobId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

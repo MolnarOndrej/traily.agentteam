@@ -20,6 +20,8 @@ public sealed class WorkItemJob
 
     public WorkItemJobStatus Status { get; set; }
 
+    public Guid? CurrentAttemptId { get; set; }
+
     public DateTimeOffset SourceUpdatedAt { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
