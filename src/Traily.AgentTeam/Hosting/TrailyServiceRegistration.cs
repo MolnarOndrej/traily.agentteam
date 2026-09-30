@@ -73,6 +73,7 @@ public static class TrailyServiceRegistration
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<WorkItemClaimService>();
         services.AddScoped<RepositoryAccessService>();
+        services.AddScoped<GitCheckoutPreflightService>();
 
         return services;
     }
