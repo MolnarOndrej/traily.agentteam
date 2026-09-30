@@ -29,7 +29,16 @@ public sealed class WorkItemExecutionAttempt
     // The specific workspace used by this attempt.
     public string? WorkingDirectory { get; set; }
 
+    public WorkItemExecutionPhase? Phase { get; set; }
+
+    public string? PlanningInputJson { get; set; }
+
+    public string? PlanningResultJson { get; set; }
+
+    public DateTimeOffset? PlanningCompletedAt { get; set; }
+
     public WorkItemStopReason? StopReason { get; set; }
+
 
     public WorkItemJob Job { get; set; } = null!;
 }

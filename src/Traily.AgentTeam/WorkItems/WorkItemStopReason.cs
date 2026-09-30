@@ -7,5 +7,8 @@ public enum WorkItemStopReason
     TicketIdentityChanged,
     TicketReadFailed,
     ProviderFailed,
-    UsageLimitReached
+    UsageLimitReached,
+    PlanningUncertain,
+    RepositoryAccessDenied,
+    InvalidPlanningResult
 }

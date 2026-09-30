@@ -74,6 +74,7 @@ public static class TrailyServiceRegistration
         services.AddScoped<WorkItemClaimService>();
         services.AddScoped<RepositoryAccessService>();
         services.AddScoped<GitCheckoutPreflightService>();
+        services.AddScoped<WorkItemPlanningService>();
 
         return services;
     }

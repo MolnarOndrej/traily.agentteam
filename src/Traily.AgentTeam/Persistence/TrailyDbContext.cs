@@ -294,6 +294,14 @@ public sealed class TrailyDbContext(
 
         attempt.Property(entry => entry.TaskSourceUpdatedAt);
 
+        attempt.Property(entry => entry.Phase)
+            .HasConversion<string>()
+            .HasMaxLength(50);
+
+        attempt.Property(entry => entry.PlanningInputJson);
+        attempt.Property(entry => entry.PlanningResultJson);
+        attempt.Property(entry => entry.PlanningCompletedAt);
+
         attempt.HasIndex(entry => entry.WorkItemJobId);
 
         attempt.HasOne(entry => entry.Job)
