@@ -4,6 +4,8 @@ Traily is a locally controlled AI software development orchestration system desi
 
 The project is currently a personal pilot focused on learning how to manage AI agents, automate development workflows, and maintain human oversight before potentially introducing the system into professional development environments.
 
+See the [Project Guide](Traily-Agent-Team-Project-Guide.md) for the current implementation status, goals, architectural decisions, and milestone development and review workflow. Read it before continuing development.
+
 ## Vision
 
 Traily acts as an AI development team that works alongside a human project owner.
