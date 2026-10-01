@@ -40,6 +40,25 @@ public sealed class OperationalIssueStartupTests
     }
 
     [Fact]
+    public async Task ReportsUnresolvedIssuesInScopeAndCapabilityOrder()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var last = CreateIssue("z", OperationalAvailability.Unknown);
+        var second = CreateIssue("a", OperationalAvailability.Unknown);
+        second.Capability = "UpdateWorkItems";
+        var first = CreateIssue("a", OperationalAvailability.Unknown);
+        var configuration = CreateIssue("YouTrack", OperationalAvailability.Unavailable);
+        configuration.ScopeType = "Configuration";
+        await fixture.SeedAsync(last, second, first, configuration);
+
+        await fixture.Reporter.StartAsync(default);
+
+        var warnings = fixture.Logger.Entries.Where(entry => entry.Level == LogLevel.Warning).ToArray();
+        Assert.Equal(new[] { configuration.Id, first.Id, second.Id, last.Id },
+            warnings.Select(entry => (Guid)entry.Properties["IssueId"]!));
+    }
+
+    [Fact]
     public async Task EmptyStoreReportsZeroWithoutWarnings()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -164,7 +183,6 @@ public sealed class OperationalIssueStartupTests
             builder.Logging.ClearProviders();
             builder.Services.AddSingleton<ILogger<OperationalIssueStartupReporter>>(logger);
             builder.Services.AddDbContext<TrailyDbContext>(options => options.UseSqlite(connection));
-            builder.Services.AddScoped<OperationalIssueQuery>();
             builder.Services.AddHostedService<OperationalIssueStartupReporter>();
             builder.Services.AddHostedService<WorkItemPollingService>();
             builder.Services.AddSingleton(new WorkItemPollingConfiguration(TimeSpan.FromMinutes(1)));

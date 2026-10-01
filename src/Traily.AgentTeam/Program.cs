@@ -63,6 +63,17 @@ if (args.Any(argument =>
         "--sync",
         StringComparison.OrdinalIgnoreCase)))
 {
+    try
+    {
+        await serviceProvider.GetRequiredService<YouTrackConfigurationStartupCheck>()
+            .StartAsync(CancellationToken.None);
+    }
+    catch (YouTrackConfigurationException)
+    {
+        Environment.ExitCode = 1;
+        return;
+    }
+
     await using var scope =
         serviceProvider.CreateAsyncScope();
 
@@ -91,10 +102,14 @@ if (args.Any(argument =>
         "--serve",
         StringComparison.OrdinalIgnoreCase)))
 {
-    _ = serviceProvider
-        .GetRequiredService<YouTrackConfiguration>();
-
-    await host.RunAsync();
+    try
+    {
+        await host.RunAsync();
+    }
+    catch (YouTrackConfigurationException)
+    {
+        Environment.ExitCode = 1;
+    }
     return;
 }
 

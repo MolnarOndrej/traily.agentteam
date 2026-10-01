@@ -56,7 +56,6 @@ public static class TrailyServiceRegistration
                 .GetRequiredService<YouTrackWorkItemSource>());
 
         services.AddSingleton<OperationalIssueService>();
-        services.AddScoped<OperationalIssueQuery>();
         services.AddScoped<IWorkItemDiscovery>(
             provider =>
             {
@@ -83,8 +82,11 @@ public static class TrailyServiceRegistration
 
         services.AddSingleton(
             _ => WorkItemPollingConfiguration.FromEnvironment());
-        // Hosted services start sequentially: report retained issues before the first poll.
+        // Report retained issues, then validate configuration before the first poll.
         services.AddHostedService<OperationalIssueStartupReporter>();
+        services.AddSingleton<YouTrackConfigurationStartupCheck>();
+        services.AddHostedService<YouTrackConfigurationStartupCheck>(
+            provider => provider.GetRequiredService<YouTrackConfigurationStartupCheck>());
         services.AddHostedService<WorkItemPollingService>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<WorkItemClaimService>();

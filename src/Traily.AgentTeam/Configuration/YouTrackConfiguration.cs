@@ -51,77 +51,90 @@ public sealed class YouTrackConfiguration
 
     public string SourceId { get; }
 
-    public static YouTrackConfiguration FromEnvironment()
+    public static YouTrackConfiguration FromEnvironment(
+        Func<string, string?>? readValue = null)
     {
-        var baseUrl = Environment.GetEnvironmentVariable(BaseUrlEnvironmentVariable);
+        readValue ??= Environment.GetEnvironmentVariable;
+        var errors = new List<string>();
+        var baseUrl = readValue(BaseUrlEnvironmentVariable);
+        Uri? baseAddress = null;
 
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
-            throw new InvalidOperationException(
-                $"Configure {BaseUrlEnvironmentVariable}.");
+            errors.Add($"Configure {BaseUrlEnvironmentVariable}.");
         }
-
-        var normalizedBaseUrl =
-            baseUrl.Trim().TrimEnd('/') + "/";
-
-        if (!Uri.TryCreate(
-                normalizedBaseUrl,
-                UriKind.Absolute,
-                out var baseAddress) ||
-            baseAddress.Scheme != Uri.UriSchemeHttps)
+        else
         {
-            throw new InvalidOperationException(
-                $"{BaseUrlEnvironmentVariable} must be an HTTPS URL.");
+            var normalizedBaseUrl =
+                baseUrl.Trim().TrimEnd('/') + "/";
+
+            if (!Uri.TryCreate(
+                    normalizedBaseUrl,
+                    UriKind.Absolute,
+                    out baseAddress) ||
+                baseAddress.Scheme != Uri.UriSchemeHttps)
+            {
+                errors.Add($"{BaseUrlEnvironmentVariable} must be an HTTPS URL.");
+            }
         }
 
-        var accessToken = Environment.GetEnvironmentVariable(TokenEnvironmentVariable);
+        var accessToken = readValue(TokenEnvironmentVariable);
 
         if (string.IsNullOrWhiteSpace(accessToken))
         {
-            throw new InvalidOperationException(
-                $"Configure {TokenEnvironmentVariable}.");
+            errors.Add($"Configure {TokenEnvironmentVariable}.");
         }
 
-        var discoveryQuery = Environment.GetEnvironmentVariable(DiscoveryQueryEnvironmentVariable);
+        var discoveryQuery = readValue(DiscoveryQueryEnvironmentVariable);
 
         if (string.IsNullOrWhiteSpace(discoveryQuery))
         {
-            throw new InvalidOperationException(
-                $"Configure {DiscoveryQueryEnvironmentVariable}.");
+            errors.Add($"Configure {DiscoveryQueryEnvironmentVariable}.");
         }
 
         var sourceId =
-            Environment.GetEnvironmentVariable(SourceIdEnvironmentVariable);
+            readValue(SourceIdEnvironmentVariable);
 
         if (string.IsNullOrWhiteSpace(sourceId))
         {
-            throw new InvalidOperationException(
-                $"Configure {SourceIdEnvironmentVariable}.");
+            errors.Add($"Configure {SourceIdEnvironmentVariable}.");
+        }
+        else if (sourceId.Trim().Length > 100)
+        {
+            errors.Add($"{SourceIdEnvironmentVariable} must not exceed 100 characters.");
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new YouTrackConfigurationException(string.Join(" ", errors));
         }
 
         var workflowStateField = ResolveOptionalValue(
+            readValue,
             WorkflowStateFieldEnvironmentVariable,
             DefaultWorkflowStateField);
 
         var assigneeField = ResolveOptionalValue(
+            readValue,
             AssigneeFieldEnvironmentVariable,
             DefaultAssigneeField);
 
         return new YouTrackConfiguration(
-            baseAddress,
-            accessToken.Trim(),
-            discoveryQuery.Trim(),
+            baseAddress!,
+            accessToken!.Trim(),
+            discoveryQuery!.Trim(),
             workflowStateField,
             assigneeField,
-            sourceId.Trim());
+            sourceId!.Trim());
     }
 
     private static string ResolveOptionalValue(
+        Func<string, string?> readValue,
         string environmentVariable,
         string defaultValue)
     {
         var configuredValue =
-            Environment.GetEnvironmentVariable(
+            readValue(
                 environmentVariable);
 
         return string.IsNullOrWhiteSpace(configuredValue)
