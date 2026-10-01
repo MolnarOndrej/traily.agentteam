@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Configuration;
 using Traily.AgentTeam.Git;
 using Traily.AgentTeam.Integrations.YouTrack;
+using Traily.AgentTeam.Operations;
 using Traily.AgentTeam.Orchestration;
 using Traily.AgentTeam.Persistence;
 using Traily.AgentTeam.Runtime;
@@ -53,9 +55,20 @@ public static class TrailyServiceRegistration
             provider => provider
                 .GetRequiredService<YouTrackWorkItemSource>());
 
-        services.AddSingleton<IWorkItemDiscovery>(
-            provider => provider
-                .GetRequiredService<YouTrackWorkItemSource>());
+        services.AddSingleton<OperationalIssueService>();
+        services.AddScoped<IWorkItemDiscovery>(
+            provider =>
+            {
+                var configuration = provider
+                    .GetRequiredService<YouTrackConfiguration>();
+
+                return new ObservedYouTrackDiscovery(
+                    provider.GetRequiredService<YouTrackWorkItemSource>(),
+                    configuration.SourceId,
+                    provider.GetRequiredService<OperationalIssueService>(),
+                    provider.GetRequiredService<
+                        ILogger<ObservedYouTrackDiscovery>>());
+            });
 
         services.AddDbContext<TrailyDbContext>(
             options => options.UseSqlite(

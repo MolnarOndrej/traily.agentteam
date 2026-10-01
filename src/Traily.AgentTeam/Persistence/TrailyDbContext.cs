@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Git;
+using Traily.AgentTeam.Operations;
 using Traily.AgentTeam.WorkItems;
 
 namespace Traily.AgentTeam.Persistence;
@@ -31,6 +32,9 @@ public sealed class TrailyDbContext(
     public DbSet<AgentRepositoryAccess> AgentRepositoryAccesses =>
         Set<AgentRepositoryAccess>();
 
+    public DbSet<OperationalIssue> OperationalIssues =>
+        Set<OperationalIssue>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureAgentProfile(modelBuilder);
@@ -41,6 +45,7 @@ public sealed class TrailyDbContext(
         ConfigureManagedProject(modelBuilder);
         ConfigureGitRepository(modelBuilder);
         ConfigureAgentRepositoryAccess(modelBuilder);
+        ConfigureOperationalIssue(modelBuilder);
     }
 
     private static void ConfigureAgentProfile(ModelBuilder modelBuilder)
@@ -405,5 +410,60 @@ public sealed class TrailyDbContext(
             .WithMany()
             .HasForeignKey(entry => entry.RepositoryId)
             .OnDelete(DeleteBehavior.Restrict);
+    }
+
+    private static void ConfigureOperationalIssue(
+    ModelBuilder modelBuilder)
+    {
+        var issue = modelBuilder.Entity<OperationalIssue>();
+
+        issue.ToTable("OperationalIssues");
+        issue.HasKey(entry => entry.Id);
+
+        issue.Property(entry => entry.Id)
+            .ValueGeneratedNever();
+
+        issue.Property(entry => entry.ScopeType)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        issue.Property(entry => entry.ScopeId)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        issue.Property(entry => entry.Capability)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        issue.Property(entry => entry.Availability)
+            .HasConversion<string>()
+            .HasMaxLength(50)
+            .IsRequired();
+
+        issue.Property(entry => entry.ReasonCode)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        issue.Property(entry => entry.Message)
+            .HasMaxLength(1000)
+            .IsRequired();
+
+        issue.Property(entry => entry.FirstObservedAt)
+            .IsRequired();
+
+        issue.Property(entry => entry.LastObservedAt)
+            .IsRequired();
+
+        issue.Property(entry => entry.ObservationCount)
+            .IsRequired();
+
+        issue.HasIndex(entry => new
+        {
+            entry.ScopeType,
+            entry.ScopeId,
+            entry.Capability
+        })
+            .IsUnique()
+            .HasFilter("\"ResolvedAt\" IS NULL");
     }
 }

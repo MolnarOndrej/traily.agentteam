@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Traily.AgentTeam.Configuration;
+using Traily.AgentTeam.Integrations.YouTrack;
 using Traily.AgentTeam.Persistence;
 
 namespace Traily.AgentTeam.WorkItems;
@@ -31,6 +32,15 @@ public sealed class WorkItemPollingService(
                     when (stoppingToken.IsCancellationRequested)
                 {
                     break;
+                }
+                catch (YouTrackDiscoveryException exception)
+                {
+                    // Opening/changing the issue is logged by OperationalIssueService.
+                    // Repeated failures remain available at Debug level.
+                    logger.LogDebug(
+                        "Discovery still unavailable for {SourceId}: {ReasonCode}.",
+                        exception.SourceId,
+                        exception.ReasonCode);
                 }
                 catch (Exception exception)
                 {
