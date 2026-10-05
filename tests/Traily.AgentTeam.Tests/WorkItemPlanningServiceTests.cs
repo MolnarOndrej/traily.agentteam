@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Git;
 using Traily.AgentTeam.Persistence;
+using Traily.AgentTeam.WorkSources;
 using Traily.AgentTeam.WorkItems;
 
 namespace Traily.AgentTeam.Tests;
@@ -52,6 +53,16 @@ public sealed class WorkItemPlanningServiceTests
         {
             SourceId = "test-source",
             Name = "Test",
+            WorkSourceConnectionId = "test-youtrack",
+            ExternalProjectId = "0-1",
+            WorkSourceConnection = new WorkSourceConnection
+            {
+                Id = "test-youtrack",
+                ProviderId = "YouTrack",
+                BaseUrl = "https://example.invalid",
+                CreatedAt = now,
+                UpdatedAt = now
+            },
             CreatedAt = now,
             UpdatedAt = now
         });

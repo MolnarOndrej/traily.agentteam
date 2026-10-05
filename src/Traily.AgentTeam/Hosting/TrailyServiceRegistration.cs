@@ -10,6 +10,7 @@ using Traily.AgentTeam.Orchestration;
 using Traily.AgentTeam.Persistence;
 using Traily.AgentTeam.Runtime;
 using Traily.AgentTeam.WorkItems;
+using Traily.AgentTeam.WorkSources;
 
 namespace Traily.AgentTeam.Hosting;
 
@@ -56,18 +57,30 @@ public static class TrailyServiceRegistration
                 .GetRequiredService<YouTrackWorkItemSource>());
 
         services.AddSingleton<OperationalIssueService>();
+        services.AddKeyedSingleton<HttpClient>("work-source-access", (_, _) =>
+            new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+            {
+                Timeout = TimeSpan.FromSeconds(20)
+            });
+        services.AddSingleton<IWorkSourceAccessCheck>(provider =>
+            new YouTrackWorkSourceAccessCheck(
+                provider.GetRequiredKeyedService<HttpClient>("work-source-access"),
+                () => provider.GetRequiredService<YouTrackConfiguration>()));
+        services.AddScoped<WorkSourceAccessService>();
         services.AddScoped<IWorkItemDiscovery>(
             provider =>
             {
                 var configuration = provider
                     .GetRequiredService<YouTrackConfiguration>();
 
-                return new ObservedYouTrackDiscovery(
+                var discovery = new ObservedYouTrackDiscovery(
                     provider.GetRequiredService<YouTrackWorkItemSource>(),
                     configuration.SourceId,
                     provider.GetRequiredService<OperationalIssueService>(),
                     provider.GetRequiredService<
                         ILogger<ObservedYouTrackDiscovery>>());
+                return new AccessCheckedWorkItemDiscovery(discovery,
+                    provider.GetRequiredService<WorkSourceAccessService>());
             });
 
         services.AddDbContext<TrailyDbContext>(
@@ -82,8 +95,9 @@ public static class TrailyServiceRegistration
 
         services.AddSingleton(
             _ => WorkItemPollingConfiguration.FromEnvironment());
-        // Report retained issues, then validate configuration before the first poll.
+        // Report retained issues, check configured access, then validate pilot discovery.
         services.AddHostedService<OperationalIssueStartupReporter>();
+        services.AddHostedService<WorkSourceAccessStartupCheck>();
         services.AddSingleton<YouTrackConfigurationStartupCheck>();
         services.AddHostedService<YouTrackConfigurationStartupCheck>(
             provider => provider.GetRequiredService<YouTrackConfigurationStartupCheck>());

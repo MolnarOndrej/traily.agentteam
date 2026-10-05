@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Git;
 using Traily.AgentTeam.Persistence;
+using Traily.AgentTeam.WorkSources;
 
 namespace Traily.AgentTeam.Tests;
 
@@ -30,6 +31,16 @@ public sealed class RepositoryAccessServiceTests
         {
             SourceId = "youtrack-stepin",
             Name = "StepIn",
+            WorkSourceConnectionId = "test-youtrack",
+            ExternalProjectId = "0-1",
+            WorkSourceConnection = new WorkSourceConnection
+            {
+                Id = "test-youtrack",
+                ProviderId = "YouTrack",
+                BaseUrl = "https://example.invalid",
+                CreatedAt = now,
+                UpdatedAt = now
+            },
             CreatedAt = now,
             UpdatedAt = now
         });

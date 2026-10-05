@@ -3,6 +3,7 @@ using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Git;
 using Traily.AgentTeam.Operations;
 using Traily.AgentTeam.WorkItems;
+using Traily.AgentTeam.WorkSources;
 
 namespace Traily.AgentTeam.Persistence;
 
@@ -26,6 +27,9 @@ public sealed class TrailyDbContext(
     public DbSet<ManagedProject> ManagedProjects =>
         Set<ManagedProject>();
 
+    public DbSet<WorkSourceConnection> WorkSourceConnections =>
+        Set<WorkSourceConnection>();
+
     public DbSet<GitRepository> GitRepositories =>
         Set<GitRepository>();
 
@@ -43,6 +47,7 @@ public sealed class TrailyDbContext(
         ConfigureWorkItemJob(modelBuilder);
         ConfigureWorkItemExecutionAttempt(modelBuilder);
         ConfigureManagedProject(modelBuilder);
+        ConfigureWorkSourceConnection(modelBuilder);
         ConfigureGitRepository(modelBuilder);
         ConfigureAgentRepositoryAccess(modelBuilder);
         ConfigureOperationalIssue(modelBuilder);
@@ -319,7 +324,13 @@ public sealed class TrailyDbContext(
     {
         var project = modelBuilder.Entity<ManagedProject>();
 
-        project.ToTable("ManagedProjects");
+        project.ToTable("ManagedProjects", table =>
+        {
+            table.HasCheckConstraint("CK_ManagedProjects_WorkSourceConnectionId",
+                "length(trim(\"WorkSourceConnectionId\")) > 0");
+            table.HasCheckConstraint("CK_ManagedProjects_ExternalProjectId",
+                "length(trim(\"ExternalProjectId\")) > 0");
+        });
         project.HasKey(entry => entry.SourceId);
 
         project.Property(entry => entry.SourceId)
@@ -330,8 +341,27 @@ public sealed class TrailyDbContext(
             .HasMaxLength(200)
             .IsRequired();
 
+        project.Property(entry => entry.WorkSourceConnectionId).HasMaxLength(100).IsRequired();
+        project.Property(entry => entry.ExternalProjectId).HasMaxLength(200).IsRequired();
+        project.HasOne(entry => entry.WorkSourceConnection)
+            .WithMany()
+            .HasForeignKey(entry => entry.WorkSourceConnectionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         project.Property(entry => entry.CreatedAt).IsRequired();
         project.Property(entry => entry.UpdatedAt).IsRequired();
+    }
+
+    private static void ConfigureWorkSourceConnection(ModelBuilder modelBuilder)
+    {
+        var connection = modelBuilder.Entity<WorkSourceConnection>();
+        connection.ToTable("WorkSourceConnections");
+        connection.HasKey(entry => entry.Id);
+        connection.Property(entry => entry.Id).HasMaxLength(100).ValueGeneratedNever();
+        connection.Property(entry => entry.ProviderId).HasMaxLength(100).IsRequired();
+        connection.Property(entry => entry.BaseUrl).HasMaxLength(2000).IsRequired();
+        connection.Property(entry => entry.CreatedAt).IsRequired();
+        connection.Property(entry => entry.UpdatedAt).IsRequired();
     }
 
     private static void ConfigureGitRepository(ModelBuilder modelBuilder)

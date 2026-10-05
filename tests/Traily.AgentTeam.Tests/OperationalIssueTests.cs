@@ -12,6 +12,29 @@ namespace Traily.AgentTeam.Tests;
 
 public sealed class OperationalIssueTests
 {
+    [Theory]
+    [InlineData(404, "DiscoveryEndpointUnavailable", OperationalAvailability.Unavailable)]
+    [InlineData(429, "RateLimited", OperationalAvailability.Unavailable)]
+    [InlineData(503, "RemoteServiceFailure", OperationalAvailability.Unavailable)]
+    [InlineData(400, "RequestRejected", OperationalAvailability.Unavailable)]
+    [InlineData(null, "ConnectionFailed", OperationalAvailability.Unknown)]
+    public async Task SharedHttpClassificationPreservesDiscoveryCapabilityMeaning(
+        int? status, string reason, OperationalAvailability availability)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var discovery = fixture.CreateDiscovery(new FakeDiscovery
+        {
+            Failure = new HttpRequestException("private-provider-diagnostic", null,
+                status is { } value ? (HttpStatusCode)value : null)
+        });
+        await Assert.ThrowsAsync<YouTrackDiscoveryException>(() => discovery.FindReadyAsync());
+        var issue = Assert.Single(await fixture.ReadIssuesAsync());
+        Assert.Equal(reason, issue.ReasonCode);
+        Assert.Equal(availability, issue.Availability);
+        Assert.Equal(status, issue.HttpStatusCode);
+        Assert.DoesNotContain("private-provider-diagnostic", issue.Message);
+    }
+
     [Fact]
     public async Task DiscoveryTracksFailureRecoveryAndRecurrence()
     {

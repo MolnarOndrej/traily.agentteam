@@ -4,6 +4,8 @@ using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Configuration;
 using Traily.AgentTeam.Hosting;
 using Traily.AgentTeam.WorkItems;
+using Traily.AgentTeam.WorkSources;
+using Traily.AgentTeam.Operations;
 var builder = Host.CreateApplicationBuilder();
 builder.Services.AddTrailyServices();
 
@@ -54,6 +56,26 @@ if (args.Any(argument =>
             $"{instructions.Length} composed instruction characters");
     }
 
+    return;
+}
+
+if (args.Any(argument =>
+    string.Equals(argument, "--check-access", StringComparison.OrdinalIgnoreCase)))
+{
+    await using var scope = serviceProvider.CreateAsyncScope();
+    var observations = await scope.ServiceProvider.GetRequiredService<WorkSourceAccessService>()
+        .CheckAllAsync();
+    foreach (var observation in observations)
+    {
+        Console.WriteLine($"{observation.Scope.Type} {observation.Scope.Id} | " +
+            $"{observation.Scope.Capability} | {observation.Availability} | " +
+            $"{observation.ReasonCode ?? "-"}");
+    }
+    if (!observations.Any(observation => observation.Scope.Type is "WorkSource" or "WorkSourceConnection"))
+        Console.WriteLine("No work-source access targets were checked.");
+    Environment.ExitCode = observations.Any(observation =>
+        observation.Availability != OperationalAvailability.Available) ||
+        !observations.Any(observation => observation.Scope.Type == "WorkSource") ? 1 : 0;
     return;
 }
 

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Traily.AgentTeam.Operations;
+using Traily.AgentTeam.Integrations.Http;
 using Traily.AgentTeam.WorkItems;
 
 namespace Traily.AgentTeam.Integrations.YouTrack;
@@ -63,57 +64,24 @@ public sealed class ObservedYouTrackDiscovery(
     {
         if (exception is HttpRequestException http)
         {
-            var status = http.StatusCode is { } value
-                ? (int?)value
-                : null;
-
-            var details = status switch
-            {
-                401 => (
-                    OperationalAvailability.Unavailable,
-                    "AuthenticationFailed",
-                    "YouTrack rejected the configured credentials."),
-                403 => (
-                    OperationalAvailability.Unavailable,
-                    "AccessDenied",
-                    "YouTrack denied the discovery request."),
-                404 => (
-                    OperationalAvailability.Unavailable,
-                    "DiscoveryEndpointUnavailable",
-                    "The configured discovery endpoint was not accessible."),
-                429 => (
-                    OperationalAvailability.Unavailable,
-                    "RateLimited",
-                    "YouTrack rate-limited the discovery request."),
-                >= 500 => (
-                    OperationalAvailability.Unavailable,
-                    "RemoteServiceFailure",
-                    "YouTrack returned a server error."),
-                null => (
-                    OperationalAvailability.Unknown,
-                    "ConnectionFailed",
-                    "The discovery request could not reach YouTrack."),
-                _ => (
-                    OperationalAvailability.Unavailable,
-                    "RequestRejected",
-                    "YouTrack rejected the discovery request.")
-            };
-
-            return new OperationalObservation(
+            var failure = HttpFailureClassifier.Classify(
+                http.StatusCode is { } status ? (int)status : null);
+            // This capability measures whether discovery completed, not entitlement.
+            return failure.ToObservation(
                 _scope,
-                details.Item1,
-                details.Item2,
-                details.Item3,
-                status);
+                failure.HttpStatusCode is null
+                    ? OperationalAvailability.Unknown
+                    : OperationalAvailability.Unavailable,
+                "YouTrack discovery",
+                failure.Kind == HttpFailureKind.ResourceInaccessible
+                    ? "DiscoveryEndpointUnavailable"
+                    : null);
         }
 
         if (exception is OperationCanceledException)
         {
-            return new OperationalObservation(
-                _scope,
-                OperationalAvailability.Unknown,
-                "RequestTimedOut",
-                "Discovery timed out or was canceled independently of shutdown.");
+            return HttpFailureClassifier.TimedOut().ToObservation(
+                _scope, OperationalAvailability.Unknown, "YouTrack discovery");
         }
 
         return new OperationalObservation(

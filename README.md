@@ -86,6 +86,16 @@ normalizes the external workflow state and assignee identity.
 The `--discover` option performs a read-only discovery check
 without invoking an agent.
 
+Traily supports explicit access checks. Database-backed work-source
+connections can map multiple managed projects to stable external project IDs,
+with a provider-neutral checker contract and a first YouTrack implementation.
+Every managed project requires an existing management-tool connection and an
+external project ID; unconnected projects cannot be persisted in the final schema.
+`--check-access` reports connection authentication and project visibility independently
+of discovery results. Startup and discovery invocation also run these checks.
+The production discovery/reader still use the existing single YouTrack configuration.
+See section 19B of the Project Guide for migration/setup, verification, and limitations.
+
 ## Guiding Principles
 
 * Human approval remains mandatory for merges and releases.
