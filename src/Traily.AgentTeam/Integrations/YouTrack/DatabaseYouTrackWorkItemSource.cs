@@ -67,7 +67,7 @@ public sealed class DatabaseYouTrackWorkItemSource(
     }
 
     private YouTrackWorkItemSource CreateSource(YouTrackSourceSettings settings, string query) =>
-        new(httpClient, YouTrackConfiguration.FromDatabase(
+        new(httpClient, new YouTrackConfiguration(
             settings.Connection.BaseAddress, settings.Connection.AccessToken,
             settings.Project.SourceId, settings.Project.ExternalProjectId, query,
             settings.Configuration.WorkflowStateField, settings.Configuration.AssigneeField));

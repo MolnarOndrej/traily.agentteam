@@ -12,25 +12,12 @@ namespace Traily.AgentTeam.Integrations.YouTrack;
 public sealed class YouTrackWorkSourceAccessCheck : IWorkSourceAccessCheck
 {
     private readonly HttpClient httpClient;
-    private readonly Func<WorkSourceConnection, CancellationToken, Task<YouTrackConnectionSettings>> getConfiguration;
+    private readonly YouTrackConfigurationStore configurations;
 
     public YouTrackWorkSourceAccessCheck(HttpClient httpClient, YouTrackConfigurationStore configurations)
     {
         this.httpClient = httpClient;
-        getConfiguration = (connection, cancellationToken) =>
-            configurations.GetConnectionAsync(connection.Id, cancellationToken);
-    }
-
-    // Retained for existing isolated adapter fixtures; production uses the database store.
-    public YouTrackWorkSourceAccessCheck(HttpClient httpClient, Func<YouTrackConfiguration> configuration)
-    {
-        this.httpClient = httpClient;
-        getConfiguration = (connection, _) =>
-        {
-            var settings = configuration();
-            return Task.FromResult(new YouTrackConnectionSettings(
-                connection.Id, settings.BaseAddress, settings.AccessToken));
-        };
+        this.configurations = configurations;
     }
 
     public string ProviderId => "YouTrack";
@@ -77,7 +64,7 @@ public sealed class YouTrackWorkSourceAccessCheck : IWorkSourceAccessCheck
         YouTrackConnectionSettings configuration;
         try
         {
-            configuration = await getConfiguration(connection, cancellationToken);
+            configuration = await configurations.GetConnectionAsync(connection.Id, cancellationToken);
         }
         catch (YouTrackConfigurationException)
         {

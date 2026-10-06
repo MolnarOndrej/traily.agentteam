@@ -1,9 +1,14 @@
 using System.Net;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Traily.AgentTeam.Configuration;
 using Traily.AgentTeam.Git;
 using Traily.AgentTeam.Integrations.Http;
 using Traily.AgentTeam.Integrations.YouTrack;
 using Traily.AgentTeam.Operations;
+using Traily.AgentTeam.Persistence;
 using Traily.AgentTeam.WorkSources;
 
 namespace Traily.AgentTeam.Tests;
@@ -13,12 +18,11 @@ public sealed class YouTrackAccessCheckTests
     [Fact]
     public async Task AccountAndProjectUseTheConfiguredTokenAndContextPathWithoutAccountStatusPolicy()
     {
-        var configuration = Configuration();
         using var handler = new Handler((request, _) =>
         {
             Assert.Equal(HttpMethod.Get, request.Method);
             Assert.Equal("Bearer", request.Headers.Authorization!.Scheme);
-            Assert.Equal(configuration.AccessToken, request.Headers.Authorization.Parameter);
+            Assert.Equal("fake-token-marker", request.Headers.Authorization.Parameter);
             Assert.Equal("example.invalid", request.RequestUri!.Host);
             Assert.Contains("application/json", request.Headers.Accept.Select(value => value.MediaType));
             return Task.FromResult(Response(request.RequestUri.AbsolutePath.EndsWith("/me")
@@ -26,7 +30,8 @@ public sealed class YouTrackAccessCheckTests
                 : "{\"id\":\"0-1\"}"));
         });
         using var client = new HttpClient(handler);
-        var check = new YouTrackWorkSourceAccessCheck(client, () => configuration);
+        await using var fixture = await Fixture.CreateAsync();
+        var check = new YouTrackWorkSourceAccessCheck(client, fixture.Store);
 
         var account = await check.CheckConnectionAsync(Connection());
         var project = await check.CheckProjectAsync(Connection(), Project());
@@ -54,7 +59,8 @@ public sealed class YouTrackAccessCheckTests
         using var handler = new Handler((_, _) => Task.FromResult(
             Response("secret-response-marker", (HttpStatusCode)status)));
         using var client = new HttpClient(handler);
-        var check = new YouTrackWorkSourceAccessCheck(client, Configuration);
+        await using var fixture = await Fixture.CreateAsync();
+        var check = new YouTrackWorkSourceAccessCheck(client, fixture.Store);
 
         var observation = await check.CheckProjectAsync(Connection(), Project());
 
@@ -75,7 +81,8 @@ public sealed class YouTrackAccessCheckTests
     {
         using var handler = new Handler((_, _) => Task.FromResult(Response(body)));
         using var client = new HttpClient(handler);
-        var observation = await new YouTrackWorkSourceAccessCheck(client, Configuration)
+        await using var fixture = await Fixture.CreateAsync();
+        var observation = await new YouTrackWorkSourceAccessCheck(client, fixture.Store)
             .CheckProjectAsync(Connection(), Project());
         Assert.Equal(OperationalAvailability.Unknown, observation.Availability);
         Assert.Equal("InvalidAccessResponse", observation.ReasonCode);
@@ -91,9 +98,10 @@ public sealed class YouTrackAccessCheckTests
     {
         using var handler = new Handler((_, _) => throw new InvalidOperationException("Unexpected request"));
         using var client = new HttpClient(handler);
+        await using var fixture = await Fixture.CreateAsync();
         var connection = Connection();
         connection.BaseUrl = url;
-        var observation = await new YouTrackWorkSourceAccessCheck(client, Configuration)
+        var observation = await new YouTrackWorkSourceAccessCheck(client, fixture.Store)
             .CheckConnectionAsync(connection);
         Assert.Equal(reason, observation.ReasonCode);
         Assert.Empty(handler.Paths);
@@ -105,11 +113,12 @@ public sealed class YouTrackAccessCheckTests
     {
         using var handler = new Handler((_, _) => throw new InvalidOperationException("Unexpected request"));
         using var client = new HttpClient(handler);
-        var check = new YouTrackWorkSourceAccessCheck(client,
-            () => throw new YouTrackConfigurationException("private-configuration-marker"));
+        await using var fixture = await Fixture.CreateAsync(configureToken: false);
+        var check = new YouTrackWorkSourceAccessCheck(client, fixture.Store);
         var observation = await check.CheckConnectionAsync(Connection());
         Assert.Equal("InvalidYouTrackConfiguration", observation.ReasonCode);
-        Assert.DoesNotContain("private-configuration-marker", observation.Message!);
+        Assert.Equal(OperationalAvailability.Unavailable, observation.Availability);
+        Assert.Equal("This YouTrack connection configuration is invalid.", observation.Message);
         Assert.Empty(handler.Paths);
     }
 
@@ -121,9 +130,10 @@ public sealed class YouTrackAccessCheckTests
     {
         using var handler = new Handler((_, _) => throw new InvalidOperationException("Unexpected request"));
         using var client = new HttpClient(handler);
+        await using var fixture = await Fixture.CreateAsync();
         var project = Project();
         project.ExternalProjectId = id;
-        var observation = await new YouTrackWorkSourceAccessCheck(client, Configuration)
+        var observation = await new YouTrackWorkSourceAccessCheck(client, fixture.Store)
             .CheckProjectAsync(Connection(), project);
         Assert.Equal("InvalidProjectId", observation.ReasonCode);
         Assert.Empty(handler.Paths);
@@ -138,7 +148,8 @@ public sealed class YouTrackAccessCheckTests
         using var handler = new Handler((_, _) => throw new HttpRequestException(
             "private-exception-marker", null, status is { } value ? (HttpStatusCode)value : null));
         using var client = new HttpClient(handler);
-        var observation = await new YouTrackWorkSourceAccessCheck(client, Configuration)
+        await using var fixture = await Fixture.CreateAsync();
+        var observation = await new YouTrackWorkSourceAccessCheck(client, fixture.Store)
             .CheckConnectionAsync(Connection());
         Assert.Equal(reason, observation.ReasonCode);
         Assert.Equal(status, observation.HttpStatusCode);
@@ -151,8 +162,8 @@ public sealed class YouTrackAccessCheckTests
     {
         using var handler = new Handler((_, _) => throw new OperationCanceledException("private-marker"));
         using var client = new HttpClient(handler);
-        var reads = 0;
-        var check = new YouTrackWorkSourceAccessCheck(client, () => { reads++; return Configuration(); });
+        await using var fixture = await Fixture.CreateAsync();
+        var check = new YouTrackWorkSourceAccessCheck(client, fixture.Store);
         var observation = await check.CheckConnectionAsync(Connection());
         Assert.Equal("RequestTimedOut", observation.ReasonCode);
         Assert.Equal(OperationalAvailability.Unknown, observation.Availability);
@@ -161,7 +172,6 @@ public sealed class YouTrackAccessCheckTests
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             check.CheckConnectionAsync(Connection(), cancellation.Token));
-        Assert.Equal(1, reads);
         Assert.Single(handler.Paths);
     }
 
@@ -176,8 +186,9 @@ public sealed class YouTrackAccessCheckTests
             throw new InvalidOperationException("Unreachable");
         });
         using var client = new HttpClient(handler);
+        await using var fixture = await Fixture.CreateAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new YouTrackWorkSourceAccessCheck(client, Configuration)
+            new YouTrackWorkSourceAccessCheck(client, fixture.Store)
                 .CheckConnectionAsync(Connection(), cancellation.Token));
     }
 
@@ -205,15 +216,6 @@ public sealed class YouTrackAccessCheckTests
     public void HttpFailureClassifierRejectsSuccessfulAndInvalidStatusCodes(int status) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => HttpFailureClassifier.Classify(status));
 
-    private static YouTrackConfiguration Configuration() => YouTrackConfiguration.FromEnvironment(
-        new Dictionary<string, string?>
-        {
-            [YouTrackConfiguration.BaseUrlEnvironmentVariable] = "https://example.invalid/youtrack/",
-            [YouTrackConfiguration.TokenEnvironmentVariable] = "fake-token-marker",
-            [YouTrackConfiguration.DiscoveryQueryEnvironmentVariable] = "project: STEPI",
-            [YouTrackConfiguration.SourceIdEnvironmentVariable] = "source"
-        }.GetValueOrDefault);
-
     private static WorkSourceConnection Connection() => new()
     {
         Id = "connection", ProviderId = "YouTrack", BaseUrl = "https://example.invalid/youtrack/"
@@ -226,6 +228,42 @@ public sealed class YouTrackAccessCheckTests
 
     private static HttpResponseMessage Response(string body, HttpStatusCode status = HttpStatusCode.OK) =>
         new(status) { Content = new StringContent(body) };
+
+    private sealed class Fixture(SqliteConnection connection, ServiceProvider provider) : IAsyncDisposable
+    {
+        public YouTrackConfigurationStore Store => provider.GetRequiredService<YouTrackConfigurationStore>();
+
+        public static async Task<Fixture> CreateAsync(bool configureToken = true)
+        {
+            var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
+            await connection.OpenAsync();
+            var services = new ServiceCollection();
+            services.AddSingleton(TimeProvider.System);
+            services.AddDbContext<TrailyDbContext>(options => options.UseSqlite(connection));
+            services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+            services.AddSingleton<AccessTokenProtector>();
+            services.AddSingleton(p => new Lazy<AccessTokenProtector>(() => p.GetRequiredService<AccessTokenProtector>()));
+            services.AddSingleton<YouTrackConfigurationStore>();
+            var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+            var fixture = new Fixture(connection, provider);
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var database = scope.ServiceProvider.GetRequiredService<TrailyDbContext>();
+                await database.Database.MigrateAsync();
+                database.WorkSourceConnections.Add(Connection());
+                await database.SaveChangesAsync();
+            }
+            if (configureToken)
+                await fixture.Store.SetAccessTokenAsync("connection", "fake-token-marker");
+            return fixture;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await provider.DisposeAsync();
+            await connection.DisposeAsync();
+        }
+    }
 
     private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send)
         : HttpMessageHandler

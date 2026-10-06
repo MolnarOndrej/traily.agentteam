@@ -75,60 +75,9 @@ public sealed class YouTrackWorkItemSourceTests
             item.SourceUpdatedAt);
     }
 
-    private static YouTrackConfiguration CreateConfiguration()
-    {
-        var names = new[]
-        {
-            YouTrackConfiguration.BaseUrlEnvironmentVariable,
-            YouTrackConfiguration.TokenEnvironmentVariable,
-            YouTrackConfiguration.DiscoveryQueryEnvironmentVariable,
-            YouTrackConfiguration.SourceIdEnvironmentVariable,
-            YouTrackConfiguration.WorkflowStateFieldEnvironmentVariable,
-            YouTrackConfiguration.AssigneeFieldEnvironmentVariable
-        };
-
-        var previous = names.ToDictionary(
-            name => name,
-            Environment.GetEnvironmentVariable);
-
-        try
-        {
-            Environment.SetEnvironmentVariable(
-                YouTrackConfiguration.BaseUrlEnvironmentVariable,
-                "https://example.invalid/");
-
-            Environment.SetEnvironmentVariable(
-                YouTrackConfiguration.TokenEnvironmentVariable,
-                "test-token");
-
-            Environment.SetEnvironmentVariable(
-                YouTrackConfiguration.DiscoveryQueryEnvironmentVariable,
-                "project: STEPI sort by: {issue id} asc");
-
-            Environment.SetEnvironmentVariable(
-                YouTrackConfiguration.SourceIdEnvironmentVariable,
-                "youtrack-stepin");
-
-            Environment.SetEnvironmentVariable(
-                YouTrackConfiguration.WorkflowStateFieldEnvironmentVariable,
-                "Stage");
-
-            Environment.SetEnvironmentVariable(
-                YouTrackConfiguration.AssigneeFieldEnvironmentVariable,
-                "Assignee");
-
-            return YouTrackConfiguration.FromEnvironment();
-        }
-        finally
-        {
-            foreach (var name in names)
-            {
-                Environment.SetEnvironmentVariable(
-                    name,
-                    previous[name]);
-            }
-        }
-    }
+    private static YouTrackConfiguration CreateConfiguration() => new(
+        new Uri("https://example.invalid/"), "test-token", "youtrack-stepin", "0-1",
+        "project: STEPI sort by: {issue id} asc", "Stage", "Assignee");
 
     private sealed class SingleIssueHandler : HttpMessageHandler
     {
@@ -144,6 +93,7 @@ public sealed class YouTrackWorkItemSourceTests
                 {
                   "id": "3-20",
                   "idReadable": "STEPI-18",
+                  "project": { "id": "0-1" },
                   "summary": "Current title",
                   "description": "Current description",
                   "updated": 1790000000000,
@@ -195,6 +145,7 @@ public sealed class YouTrackWorkItemSourceTests
                 {
                     id = $"3-{index}",
                     idReadable = $"STEPI-{index}",
+                    project = new { id = "0-1" },
                     summary = $"Ticket {index}",
                     updated = 1_790_000_000_000L,
                     customFields = new object[]

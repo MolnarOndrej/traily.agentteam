@@ -262,7 +262,6 @@ public sealed class YouTrackWorkItemSource
     }
 
     private bool MatchesProject(YouTrackIssueResponse issue) =>
-        _configuration.ExternalProjectId is null ||
         issue.Project?.Id == _configuration.ExternalProjectId;
 
     private sealed record YouTrackIssueResponse(
