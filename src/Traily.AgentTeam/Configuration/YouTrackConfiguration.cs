@@ -29,7 +29,8 @@ public sealed class YouTrackConfiguration
         string discoveryQuery,
         string workflowStateField,
         string assigneeField,
-        string sourceId)
+        string sourceId,
+        string? externalProjectId)
     {
         BaseAddress = baseAddress;
         AccessToken = accessToken;
@@ -37,6 +38,7 @@ public sealed class YouTrackConfiguration
         WorkflowStateField = workflowStateField;
         AssigneeField = assigneeField;
         SourceId = sourceId;
+        ExternalProjectId = externalProjectId;
     }
 
     public Uri BaseAddress { get; }
@@ -50,6 +52,15 @@ public sealed class YouTrackConfiguration
     public string AssigneeField { get; }
 
     public string SourceId { get; }
+
+    public string? ExternalProjectId { get; }
+
+    public static YouTrackConfiguration FromDatabase(
+        Uri baseAddress, string accessToken, string sourceId,
+        string externalProjectId, string discoveryQuery,
+        string workflowStateField, string assigneeField) =>
+        new(baseAddress, accessToken, discoveryQuery, workflowStateField,
+            assigneeField, sourceId, externalProjectId);
 
     public static YouTrackConfiguration FromEnvironment(
         Func<string, string?>? readValue = null)
@@ -125,7 +136,8 @@ public sealed class YouTrackConfiguration
             discoveryQuery!.Trim(),
             workflowStateField,
             assigneeField,
-            sourceId!.Trim());
+            sourceId!.Trim(),
+            externalProjectId: null);
     }
 
     private static string ResolveOptionalValue(

@@ -35,26 +35,19 @@ public static class TrailyServiceRegistration
         services.AddSingleton<IExecutionTraceWriter>(
             _ => new FileExecutionTraceWriter(traceDirectory));
 
-        services.AddSingleton(
-            _ => YouTrackConfiguration.FromEnvironment());
-
-        services.AddSingleton(
-            provider =>
+        CredentialProtectionConfiguration.Register(services);
+        services.AddSingleton(provider => new Lazy<AccessTokenProtector>(
+            () => provider.GetRequiredService<AccessTokenProtector>()));
+        services.AddSingleton<YouTrackConfigurationStore>();
+        services.AddSingleton<YouTrackTokenConfigurationCommand>();
+        services.AddSingleton<HttpClient>(_ =>
+            new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
             {
-                var configuration = provider
-                    .GetRequiredService<YouTrackConfiguration>();
-
-                return new HttpClient
-                {
-                    BaseAddress = configuration.BaseAddress
-                };
+                Timeout = TimeSpan.FromSeconds(20)
             });
-
-        services.AddSingleton<YouTrackWorkItemSource>();
-
-        services.AddSingleton<IWorkItemReader>(
-            provider => provider
-                .GetRequiredService<YouTrackWorkItemSource>());
+        services.AddSingleton<DatabaseYouTrackWorkItemSource>();
+        services.AddSingleton<IWorkItemReader>(provider =>
+            provider.GetRequiredService<DatabaseYouTrackWorkItemSource>());
 
         services.AddSingleton<OperationalIssueService>();
         services.AddKeyedSingleton<HttpClient>("work-source-access", (_, _) =>
@@ -65,23 +58,13 @@ public static class TrailyServiceRegistration
         services.AddSingleton<IWorkSourceAccessCheck>(provider =>
             new YouTrackWorkSourceAccessCheck(
                 provider.GetRequiredKeyedService<HttpClient>("work-source-access"),
-                () => provider.GetRequiredService<YouTrackConfiguration>()));
+                provider.GetRequiredService<YouTrackConfigurationStore>()));
         services.AddScoped<WorkSourceAccessService>();
         services.AddScoped<IWorkItemDiscovery>(
             provider =>
-            {
-                var configuration = provider
-                    .GetRequiredService<YouTrackConfiguration>();
-
-                var discovery = new ObservedYouTrackDiscovery(
-                    provider.GetRequiredService<YouTrackWorkItemSource>(),
-                    configuration.SourceId,
-                    provider.GetRequiredService<OperationalIssueService>(),
-                    provider.GetRequiredService<
-                        ILogger<ObservedYouTrackDiscovery>>());
-                return new AccessCheckedWorkItemDiscovery(discovery,
-                    provider.GetRequiredService<WorkSourceAccessService>());
-            });
+                new AccessCheckedWorkItemDiscovery(
+                    provider.GetRequiredService<DatabaseYouTrackWorkItemSource>(),
+                    provider.GetRequiredService<WorkSourceAccessService>()));
 
         services.AddDbContext<TrailyDbContext>(
             options => options.UseSqlite(
@@ -95,12 +78,12 @@ public static class TrailyServiceRegistration
 
         services.AddSingleton(
             _ => WorkItemPollingConfiguration.FromEnvironment());
-        // Report retained issues, check configured access, then validate pilot discovery.
+        // Retained history is visible before connection checks and per-source validation.
         services.AddHostedService<OperationalIssueStartupReporter>();
         services.AddHostedService<WorkSourceAccessStartupCheck>();
-        services.AddSingleton<YouTrackConfigurationStartupCheck>();
-        services.AddHostedService<YouTrackConfigurationStartupCheck>(
-            provider => provider.GetRequiredService<YouTrackConfigurationStartupCheck>());
+        services.AddSingleton<WorkSourceConfigurationStartupCheck>();
+        services.AddHostedService<WorkSourceConfigurationStartupCheck>(
+            provider => provider.GetRequiredService<WorkSourceConfigurationStartupCheck>());
         services.AddHostedService<WorkItemPollingService>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<WorkItemClaimService>();

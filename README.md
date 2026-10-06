@@ -93,8 +93,8 @@ Every managed project requires an existing management-tool connection and an
 external project ID; unconnected projects cannot be persisted in the final schema.
 `--check-access` reports connection authentication and project visibility independently
 of discovery results. Startup and discovery invocation also run these checks.
-The production discovery/reader still use the existing single YouTrack configuration.
-See section 19B of the Project Guide for migration/setup, verification, and limitations.
+YouTrack discovery, ticket reads, and access checks now share database-backed connection configuration. Each connection has one encrypted token shared by its selected projects and agents; discovery queries each enabled agent's mapped account independently.
+See sections 19B and 19C of the Project Guide for migration/setup, verification, and limitations.
 
 ## Guiding Principles
 

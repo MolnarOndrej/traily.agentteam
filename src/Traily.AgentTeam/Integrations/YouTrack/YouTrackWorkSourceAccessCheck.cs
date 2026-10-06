@@ -9,10 +9,30 @@ using Traily.AgentTeam.WorkSources;
 
 namespace Traily.AgentTeam.Integrations.YouTrack;
 
-public sealed class YouTrackWorkSourceAccessCheck(
-    HttpClient httpClient,
-    Func<YouTrackConfiguration> getConfiguration) : IWorkSourceAccessCheck
+public sealed class YouTrackWorkSourceAccessCheck : IWorkSourceAccessCheck
 {
+    private readonly HttpClient httpClient;
+    private readonly Func<WorkSourceConnection, CancellationToken, Task<YouTrackConnectionSettings>> getConfiguration;
+
+    public YouTrackWorkSourceAccessCheck(HttpClient httpClient, YouTrackConfigurationStore configurations)
+    {
+        this.httpClient = httpClient;
+        getConfiguration = (connection, cancellationToken) =>
+            configurations.GetConnectionAsync(connection.Id, cancellationToken);
+    }
+
+    // Retained for existing isolated adapter fixtures; production uses the database store.
+    public YouTrackWorkSourceAccessCheck(HttpClient httpClient, Func<YouTrackConfiguration> configuration)
+    {
+        this.httpClient = httpClient;
+        getConfiguration = (connection, _) =>
+        {
+            var settings = configuration();
+            return Task.FromResult(new YouTrackConnectionSettings(
+                connection.Id, settings.BaseAddress, settings.AccessToken));
+        };
+    }
+
     public string ProviderId => "YouTrack";
 
     public async Task<OperationalObservation> CheckConnectionAsync(
@@ -54,17 +74,15 @@ public sealed class YouTrackWorkSourceAccessCheck(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        YouTrackConfiguration configuration;
+        YouTrackConnectionSettings configuration;
         try
         {
-            // Resolve lazily so startup can report invalid settings in its usual order.
-            // Discovery and access checks share the same configured token.
-            configuration = getConfiguration();
+            configuration = await getConfiguration(connection, cancellationToken);
         }
         catch (YouTrackConfigurationException)
         {
             return new OperationalObservation(scope, OperationalAvailability.Unavailable,
-                "InvalidYouTrackConfiguration", "The current YouTrack configuration is invalid.");
+                "InvalidYouTrackConfiguration", "This YouTrack connection configuration is invalid.");
         }
 
         if (!Uri.TryCreate(connection.BaseUrl.Trim().TrimEnd('/') + "/",
@@ -76,12 +94,11 @@ public sealed class YouTrackWorkSourceAccessCheck(
             return new OperationalObservation(scope, OperationalAvailability.Unavailable,
                 "InvalidConnectionConfiguration", "Configure an HTTPS service URL without credentials, query, or fragment.");
 
-        // Until provider configurations are database-backed, only the configured
-        // YouTrack service can use this token. Never send it to another connection URL.
+        // Reject a stale/mismatched target; credentials are bound to the selected connection.
         if (baseAddress != configuration.BaseAddress)
             return new OperationalObservation(scope, OperationalAvailability.Unknown,
                 "ConnectionConfigurationUnavailable",
-                "This connection does not match the currently configured YouTrack service.");
+                "This connection does not match its loaded YouTrack configuration.");
 
         try
         {

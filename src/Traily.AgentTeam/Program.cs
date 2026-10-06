@@ -12,6 +12,20 @@ builder.Services.AddTrailyServices();
 using var host = builder.Build();
 var serviceProvider = host.Services;
 
+if (args.Any(argument => string.Equals(argument, "--set-youtrack-token", StringComparison.OrdinalIgnoreCase)))
+{
+    if (args.Length != 2 || !string.Equals(args[0], "--set-youtrack-token", StringComparison.OrdinalIgnoreCase) ||
+        string.IsNullOrWhiteSpace(args[1]))
+    {
+        Console.Error.WriteLine("Usage: --set-youtrack-token <connection-id>. The token is entered at a hidden prompt.");
+        Environment.ExitCode = 1;
+        return;
+    }
+    Environment.ExitCode = await serviceProvider.GetRequiredService<YouTrackTokenConfigurationCommand>()
+        .RunAsync(args[1]);
+    return;
+}
+
 if (args.Any(argument =>
     string.Equals(
         argument,
@@ -87,7 +101,7 @@ if (args.Any(argument =>
 {
     try
     {
-        await serviceProvider.GetRequiredService<YouTrackConfigurationStartupCheck>()
+        await serviceProvider.GetRequiredService<WorkSourceConfigurationStartupCheck>()
             .StartAsync(CancellationToken.None);
     }
     catch (YouTrackConfigurationException)

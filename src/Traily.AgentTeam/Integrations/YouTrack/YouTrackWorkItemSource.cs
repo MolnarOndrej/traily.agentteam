@@ -48,7 +48,7 @@ public sealed class YouTrackWorkItemSource
 
         using var request = CreateGetRequest(
             $"api/issues/{encodedId}" +
-            "?fields=id,idReadable,summary,description,updated," +
+            "?fields=id,idReadable,summary,description,updated,project(id)," +
             "customFields(name,value(id,name))");
 
         using var response = await _httpClient.SendAsync(
@@ -76,7 +76,7 @@ public sealed class YouTrackWorkItemSource
                 StringComparison.Ordinal) ||
             string.IsNullOrWhiteSpace(issue.IdReadable) ||
             string.IsNullOrWhiteSpace(issue.Summary) ||
-            issue.Updated is null)
+            issue.Updated is null || !MatchesProject(issue))
         {
             throw new InvalidDataException(
                 $"YouTrack returned incomplete or mismatched data for " +
@@ -142,7 +142,7 @@ public sealed class YouTrackWorkItemSource
                 $"?query={encodedQuery}" +
                 $"&$skip={skip}" +
                 $"&$top={DiscoveryPageSize}" +
-                "&fields=id,idReadable,summary,updated," +
+                "&fields=id,idReadable,summary,updated,project(id)," +
                 "customFields(name,value(id,name,login,fullName))" +
                 $"&customFields={encodedWorkflowStateField}" +
                 $"&customFields={encodedAssigneeField}";
@@ -196,7 +196,7 @@ public sealed class YouTrackWorkItemSource
     {
         var request = new HttpRequestMessage(
             HttpMethod.Get,
-            requestUri);
+            new Uri(_configuration.BaseAddress, requestUri));
 
         request.Headers.Authorization =
             new AuthenticationHeaderValue(
@@ -216,7 +216,7 @@ public sealed class YouTrackWorkItemSource
         if (string.IsNullOrWhiteSpace(issue.ExternalId) ||
             string.IsNullOrWhiteSpace(issue.IdReadable) ||
             string.IsNullOrWhiteSpace(issue.Summary) ||
-            issue.Updated is null)
+            issue.Updated is null || !MatchesProject(issue))
         {
             throw new InvalidDataException(
                 "YouTrack returned incomplete discovery data.");
@@ -261,6 +261,10 @@ public sealed class YouTrackWorkItemSource
                 issue.Updated.Value));
     }
 
+    private bool MatchesProject(YouTrackIssueResponse issue) =>
+        _configuration.ExternalProjectId is null ||
+        issue.Project?.Id == _configuration.ExternalProjectId;
+
     private sealed record YouTrackIssueResponse(
         [property: JsonPropertyName("id")]
         string? ExternalId,
@@ -273,7 +277,12 @@ public sealed class YouTrackWorkItemSource
         [property: JsonPropertyName("updated")]
         long? Updated,
         [property: JsonPropertyName("customFields")]
-        YouTrackCustomFieldResponse[]? CustomFields);
+        YouTrackCustomFieldResponse[]? CustomFields,
+        [property: JsonPropertyName("project")]
+        YouTrackProjectResponse? Project);
+
+    private sealed record YouTrackProjectResponse(
+        [property: JsonPropertyName("id")] string? Id);
 
     private sealed record YouTrackCustomFieldResponse(
         [property: JsonPropertyName("name")]

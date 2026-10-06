@@ -4,6 +4,7 @@ using Traily.AgentTeam.Git;
 using Traily.AgentTeam.Operations;
 using Traily.AgentTeam.WorkItems;
 using Traily.AgentTeam.WorkSources;
+using Traily.AgentTeam.Integrations.YouTrack;
 
 namespace Traily.AgentTeam.Persistence;
 
@@ -30,6 +31,12 @@ public sealed class TrailyDbContext(
     public DbSet<WorkSourceConnection> WorkSourceConnections =>
         Set<WorkSourceConnection>();
 
+    public DbSet<YouTrackConnectionConfiguration> YouTrackConnectionConfigurations =>
+        Set<YouTrackConnectionConfiguration>();
+
+    public DbSet<YouTrackProjectConfiguration> YouTrackProjectConfigurations =>
+        Set<YouTrackProjectConfiguration>();
+
     public DbSet<GitRepository> GitRepositories =>
         Set<GitRepository>();
 
@@ -48,6 +55,7 @@ public sealed class TrailyDbContext(
         ConfigureWorkItemExecutionAttempt(modelBuilder);
         ConfigureManagedProject(modelBuilder);
         ConfigureWorkSourceConnection(modelBuilder);
+        ConfigureYouTrackConfiguration(modelBuilder);
         ConfigureGitRepository(modelBuilder);
         ConfigureAgentRepositoryAccess(modelBuilder);
         ConfigureOperationalIssue(modelBuilder);
@@ -362,6 +370,27 @@ public sealed class TrailyDbContext(
         connection.Property(entry => entry.BaseUrl).HasMaxLength(2000).IsRequired();
         connection.Property(entry => entry.CreatedAt).IsRequired();
         connection.Property(entry => entry.UpdatedAt).IsRequired();
+    }
+
+    private static void ConfigureYouTrackConfiguration(ModelBuilder modelBuilder)
+    {
+        var connection = modelBuilder.Entity<YouTrackConnectionConfiguration>();
+        connection.HasKey(entry => entry.ConnectionId);
+        connection.Property(entry => entry.ConnectionId).HasMaxLength(100).ValueGeneratedNever();
+        connection.Property(entry => entry.ProtectedAccessToken).IsRequired();
+        connection.HasOne<WorkSourceConnection>().WithOne()
+            .HasForeignKey<YouTrackConnectionConfiguration>(entry => entry.ConnectionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        var project = modelBuilder.Entity<YouTrackProjectConfiguration>();
+        project.HasKey(entry => entry.SourceId);
+        project.Property(entry => entry.SourceId).HasMaxLength(100).ValueGeneratedNever();
+        project.Property(entry => entry.DiscoveryQueryTemplate).HasMaxLength(4000).IsRequired();
+        project.Property(entry => entry.WorkflowStateField).HasMaxLength(200).IsRequired();
+        project.Property(entry => entry.AssigneeField).HasMaxLength(200).IsRequired();
+        project.HasOne<ManagedProject>().WithOne()
+            .HasForeignKey<YouTrackProjectConfiguration>(entry => entry.SourceId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 
     private static void ConfigureGitRepository(ModelBuilder modelBuilder)
