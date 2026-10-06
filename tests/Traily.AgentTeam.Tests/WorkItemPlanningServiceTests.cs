@@ -17,6 +17,18 @@ public sealed class WorkItemPlanningServiceTests
     [InlineData("revoked")]
     [InlineData("invalid")]
     [InlineData("obsolete")]
+    [InlineData("wrong-agent-begin")]
+    [InlineData("wrong-agent-result")]
+    [InlineData("duplicate")]
+    [InlineData("duplicate-uncertain")]
+    [InlineData("null-selection")]
+    [InlineData("null-repository")]
+    [InlineData("empty-ready")]
+    [InlineData("unknown-outcome")]
+    [InlineData("blank-explanation")]
+    [InlineData("blank-repository-id")]
+    [InlineData("blank-rationale")]
+    [InlineData("blank-evidence")]
     public async Task PlanningCheckpointPreservesOwnershipAndDecision(
         string scenario)
     {
@@ -132,6 +144,26 @@ public sealed class WorkItemPlanningServiceTests
                 new("ui", new string('b', 40))
             ]);
 
+        if (scenario == "wrong-agent-begin")
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.BeginAsync(claim with { AgentId = "another-agent" }, input));
+
+            await using var observer = new TrailyDbContext(options);
+            var unchangedJob = await observer.WorkItemJobs.AsNoTracking().SingleAsync();
+            var unchangedAttempt = await observer.WorkItemExecutionAttempts.AsNoTracking().SingleAsync();
+            Assert.Equal(WorkItemJobStatus.Running, unchangedJob.Status);
+            Assert.Equal("team-lead", unchangedJob.AgentId);
+            Assert.Equal(attemptId, unchangedJob.CurrentAttemptId);
+            Assert.Equal(now, unchangedJob.UpdatedAt);
+            Assert.Null(unchangedAttempt.Phase);
+            Assert.Null(unchangedAttempt.TaskSnapshot);
+            Assert.Null(unchangedAttempt.PlanningInputJson);
+            Assert.Null(unchangedAttempt.PlanningResultJson);
+            Assert.Null(unchangedAttempt.StopReason);
+            return;
+        }
+
         await service.BeginAsync(claim, input);
 
         // Observe committed input through another context.
@@ -199,7 +231,41 @@ public sealed class WorkItemPlanningServiceTests
                         "The inspected client consumes that response.")
                 });
 
-        if (scenario == "obsolete")
+        var repository = result.SelectedRepositories.FirstOrDefault();
+        result = scenario switch
+        {
+            "duplicate" => result with { SelectedRepositories = [repository!, repository!] },
+            "duplicate-uncertain" => result with
+            {
+                Outcome = WorkItemPlanningOutcome.NeedsClarification,
+                SelectedRepositories = [repository!, repository!]
+            },
+            "null-selection" => result with { SelectedRepositories = null! },
+            "null-repository" => result with { SelectedRepositories = [null!] },
+            "empty-ready" => result with { SelectedRepositories = [] },
+            "unknown-outcome" => result with { Outcome = (WorkItemPlanningOutcome)999 },
+            "blank-explanation" => result with { Explanation = " " },
+            "blank-repository-id" => result with
+            {
+                SelectedRepositories = [repository! with { RepositoryId = " " }]
+            },
+            "blank-rationale" => result with
+            {
+                SelectedRepositories = [repository! with { Rationale = " " }]
+            },
+            "blank-evidence" => result with
+            {
+                SelectedRepositories = [repository! with { Evidence = " " }]
+            },
+            _ => result
+        };
+
+        if (scenario == "wrong-agent-result")
+        {
+            claim = claim with { AgentId = "another-agent" };
+        }
+
+        if (scenario is "obsolete" or "wrong-agent-result")
         {
             await Assert.ThrowsAsync<InvalidOperationException>(
                 () => service.SaveResultAsync(claim, result));
@@ -221,15 +287,22 @@ public sealed class WorkItemPlanningServiceTests
 
         Assert.Null(attempt.FinishedAt);
 
-        if (scenario == "obsolete")
+        if (scenario is "obsolete" or "wrong-agent-result")
         {
             Assert.Equal(WorkItemJobStatus.Running, job.Status);
+            Assert.Equal("team-lead", job.AgentId);
+            Assert.Equal(now, job.UpdatedAt);
             Assert.Equal(
                 WorkItemExecutionPhase.Planning,
                 attempt.Phase);
             Assert.Null(attempt.PlanningResultJson);
             Assert.Null(attempt.PlanningCompletedAt);
             Assert.Null(attempt.StopReason);
+            if (scenario == "wrong-agent-result")
+            {
+                Assert.Equal(attemptId, job.CurrentAttemptId);
+                Assert.Equal(JsonSerializer.Serialize(input), attempt.PlanningInputJson);
+            }
             return;
         }
 
@@ -247,8 +320,8 @@ public sealed class WorkItemPlanningServiceTests
         Assert.Equal(result.Outcome, restoredResult.Outcome);
         Assert.Equal(result.Explanation, restoredResult.Explanation);
         Assert.Equal(
-            result.SelectedRepositories.ToArray(),
-            restoredResult.SelectedRepositories.ToArray());
+            result.SelectedRepositories?.ToArray(),
+            restoredResult.SelectedRepositories?.ToArray());
 
         if (scenario == "ready")
         {

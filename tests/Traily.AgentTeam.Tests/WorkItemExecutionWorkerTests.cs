@@ -210,6 +210,90 @@ public sealed class WorkItemExecutionWorkerTests
         Assert.Equal(WorkItemJobStatus.Running, job.Status);
     }
 
+    [Theory]
+    [InlineData("prepare")]
+    [InlineData("session")]
+    [InlineData("finish")]
+    public async Task ChangedJobAgentRejectsWritesFromTheOriginalClaim(string stage)
+    {
+        await using var connection = await OpenConnectionAsync();
+        var options = CreateOptions(connection);
+        await SeedAsync(options);
+        await using var database = new TrailyDbContext(options);
+
+        database.AgentProfiles.Add(new AgentProfile
+        {
+            Id = "another-agent",
+            Name = "Another Agent",
+            Instructions = "Analyze tasks.",
+            IsEnabled = true,
+            MaxConcurrentJobs = 1,
+            CreatedAt = TicketUpdatedAt,
+            UpdatedAt = TicketUpdatedAt
+        });
+        await database.SaveChangesAsync();
+
+        async Task ChangeJobAgentAsync()
+        {
+            await database.WorkItemJobs.ExecuteUpdateAsync(setters =>
+                setters.SetProperty(job => job.AgentId, "another-agent"));
+        }
+
+        var provider = new FakeProvider(async (_, onSessionAvailable, token) =>
+        {
+            if (stage == "session")
+            {
+                await onSessionAvailable("original-session", token);
+            }
+
+            await ChangeJobAgentAsync();
+
+            if (stage == "session")
+            {
+                await onSessionAvailable("rejected-session", token);
+            }
+
+            return new WorkItemExecutionResult(true, null);
+        });
+        var reader = new FakeReader(CreateTicket(),
+            stage == "prepare" ? ChangeJobAgentAsync : null);
+        var worker = CreateWorker(database, reader, provider);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            worker.RunNextAsync(Path.GetTempPath(), "To Do"));
+
+        // Reload through a separate context to verify committed state rather
+        // than the worker context's tracked entities.
+        await using var observer = new TrailyDbContext(options);
+        var job = await observer.WorkItemJobs.AsNoTracking().SingleAsync();
+        var attempt = await observer.WorkItemExecutionAttempts.AsNoTracking().SingleAsync();
+        Assert.Equal("another-agent", job.AgentId);
+        Assert.Equal(WorkItemJobStatus.Running, job.Status);
+        Assert.Equal(attempt.Id, job.CurrentAttemptId);
+        Assert.Null(attempt.StopReason);
+        Assert.Null(attempt.FinishedAt);
+        Assert.Equal(stage == "session" ? "original-session" : null, attempt.ProviderSessionId);
+
+        if (stage == "prepare")
+        {
+            Assert.Equal(0, provider.Calls);
+            Assert.Null(attempt.TaskSnapshot);
+            Assert.Null(attempt.TaskSourceUpdatedAt);
+            Assert.Null(attempt.WorkingDirectory);
+            Assert.Null(attempt.ProviderId);
+            Assert.Null(attempt.StartedAt);
+        }
+        else
+        {
+            Assert.Equal(1, provider.Calls);
+            Assert.Contains("Current description", attempt.TaskSnapshot);
+            Assert.Equal(TicketUpdatedAt, attempt.TaskSourceUpdatedAt);
+            Assert.Equal(Path.GetFullPath(Path.GetTempPath()), attempt.WorkingDirectory);
+            Assert.Equal("fake-provider", attempt.ProviderId);
+            Assert.NotNull(attempt.StartedAt);
+        }
+    }
+
     private static WorkItemExecutionWorker CreateWorker(
         TrailyDbContext database,
         IWorkItemReader reader,
@@ -292,10 +376,10 @@ public sealed class WorkItemExecutionWorkerTests
         await database.SaveChangesAsync();
     }
 
-    private sealed class FakeReader(WorkItem ticket)
+    private sealed class FakeReader(WorkItem ticket, Func<Task>? onRead = null)
         : IWorkItemReader
     {
-        public Task<WorkItem> GetRequiredAsync(
+        public async Task<WorkItem> GetRequiredAsync(
             string sourceId,
             string externalWorkItemId,
             CancellationToken cancellationToken = default)
@@ -303,7 +387,12 @@ public sealed class WorkItemExecutionWorkerTests
             Assert.Equal("test-source", sourceId);
             Assert.Equal("issue-1", externalWorkItemId);
 
-            return Task.FromResult(ticket);
+            if (onRead is not null)
+            {
+                await onRead();
+            }
+
+            return ticket;
         }
     }
 

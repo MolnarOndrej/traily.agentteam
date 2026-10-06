@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Traily.AgentTeam.Agents;
 using Traily.AgentTeam.Configuration;
@@ -148,39 +148,3 @@ if (args.Any(argument =>
     }
     return;
 }
-
-// var agentTaskInvoker =
-//     serviceProvider.GetRequiredService<AgentTaskInvoker>();
-
-// var workItemReader =
-//     serviceProvider.GetRequiredService<IWorkItemReader>();
-
-// const string agentId = "team-lead";
-// const string taskId = "STEPI-18";
-
-// var workItem =
-//     await workItemReader.GetRequiredAsync(taskId);
-
-// var taskDescription = $"""
-//     # {workItem.Id} — {workItem.Title}
-
-//     {workItem.Description}
-//     """;
-
-// Console.WriteLine($"Running Team Lead analysis of {taskId}...");
-
-// var result = await agentTaskInvoker.InvokeAsync(
-//     new AgentTaskInvocation(
-//         AgentId: agentId,
-//         TaskId: taskId,
-//         TaskDescription: taskDescription,
-//         WorkingDirectory: rootDirectory));
-
-// if (!result.Success)
-// {
-//     throw new InvalidOperationException(
-//         $"Agent execution failed: {result.Output}");
-// }
-
-// Console.WriteLine();
-// Console.WriteLine(result.Output);

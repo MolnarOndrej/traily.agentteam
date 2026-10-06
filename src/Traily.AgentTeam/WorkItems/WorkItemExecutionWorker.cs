@@ -183,7 +183,7 @@ public sealed class WorkItemExecutionWorker(
     {
         var now = clock.GetUtcNow();
 
-        var updated = await CurrentAttempt(claim)
+        var updated = await database.CurrentAttempt(claim)
             .ExecuteUpdateAsync(
                 setters => setters
                     .SetProperty(
@@ -217,7 +217,7 @@ public sealed class WorkItemExecutionWorker(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
 
-        var updated = await CurrentAttempt(claim)
+        var updated = await database.CurrentAttempt(claim)
             .ExecuteUpdateAsync(
                 setters => setters.SetProperty(
                     entry => entry.ProviderSessionId,
@@ -244,11 +244,7 @@ public sealed class WorkItemExecutionWorker(
                 IsolationLevel.Serializable,
                 cancellationToken);
 
-        var jobsUpdated = await database.WorkItemJobs
-            .Where(job =>
-                job.Id == claim.JobId &&
-                job.CurrentAttemptId == claim.AttemptId &&
-                job.Status == WorkItemJobStatus.Running)
+        var jobsUpdated = await database.CurrentJob(claim)
             .ExecuteUpdateAsync(
                 setters => setters
                     .SetProperty(job => job.Status, status)
@@ -285,18 +281,5 @@ public sealed class WorkItemExecutionWorker(
         }
 
         await transaction.CommitAsync(cancellationToken);
-    }
-
-    private IQueryable<WorkItemExecutionAttempt> CurrentAttempt(
-        WorkItemClaim claim)
-    {
-        return database.WorkItemExecutionAttempts.Where(
-            entry =>
-                entry.Id == claim.AttemptId &&
-                entry.WorkItemJobId == claim.JobId &&
-                database.WorkItemJobs.Any(job =>
-                    job.Id == claim.JobId &&
-                    job.CurrentAttemptId == claim.AttemptId &&
-                    job.Status == WorkItemJobStatus.Running));
     }
 }

@@ -34,7 +34,7 @@ public sealed class WorkItemPlanningService(
                 nameof(input));
         }
 
-        // Underlying collection behind Repositories might be mutable List and change after serialization. Capture a snapshot to avoid that.
+        // Persist and validate the same snapshot of the caller's collection.
         var capturedInput = input with
         {
             Repositories = input.Repositories.ToArray()
@@ -65,7 +65,7 @@ public sealed class WorkItemPlanningService(
                 "Planning input includes a repository without Read access.");
         }
 
-        var updated = await CurrentAttempt(claim)
+        var updated = await database.CurrentAttempt(claim)
             .Where(attempt =>
                 attempt.Phase == null &&
                 attempt.StartedAt == null &&
@@ -98,7 +98,7 @@ public sealed class WorkItemPlanningService(
     {
         ArgumentNullException.ThrowIfNull(result);
 
-        // Underlying collection behind Repositories might be mutable List and change after serialization. Capture a snapshot to avoid that.
+        // Persist and validate the same snapshot, including malformed results.
         var capturedResult = result with
         {
             SelectedRepositories = result.SelectedRepositories?.ToArray()!
@@ -112,7 +112,7 @@ public sealed class WorkItemPlanningService(
 
         var job = await GetCurrentJobAsync(claim, cancellationToken);
 
-        var attempt = await CurrentAttempt(claim)
+        var attempt = await database.CurrentAttempt(claim)
             .AsNoTracking()
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -130,37 +130,9 @@ public sealed class WorkItemPlanningService(
             ?? throw new InvalidOperationException(
                 "The saved planning input is invalid.");
 
-        var inspectedIds = input.Repositories
-            .Select(repository => repository.RepositoryId)
-            .ToHashSet(StringComparer.Ordinal);
+        var reason = WorkItemPlanningResultValidator.GetStopReason(capturedResult, input);
 
-        WorkItemStopReason? reason = null;
-
-        var selected = capturedResult.SelectedRepositories;
-
-        if (!Enum.IsDefined(capturedResult.Outcome) ||
-            string.IsNullOrWhiteSpace(capturedResult.Explanation) ||
-            selected is null ||
-            selected.Any(repository =>
-                repository is null ||
-                string.IsNullOrWhiteSpace(repository.RepositoryId) ||
-                string.IsNullOrWhiteSpace(repository.Rationale) ||
-                string.IsNullOrWhiteSpace(repository.Evidence)) ||
-            selected.Select(repository => repository.RepositoryId)
-                .Distinct(StringComparer.Ordinal).Count() != selected.Count ||
-            selected.Any(repository =>
-                !inspectedIds.Contains(repository.RepositoryId)) ||
-            (capturedResult.Outcome == WorkItemPlanningOutcome.Ready &&
-                selected.Count == 0))
-        {
-            reason = WorkItemStopReason.InvalidPlanningResult;
-        }
-        else if (capturedResult.Outcome ==
-                 WorkItemPlanningOutcome.NeedsClarification)
-        {
-            reason = WorkItemStopReason.PlanningUncertain;
-        }
-        else
+        if (reason is null)
         {
             // Permissions may have changed during planning.
             var accessible = await repositoryAccess
@@ -173,7 +145,7 @@ public sealed class WorkItemPlanningService(
                 .Select(repository => repository.RepositoryId)
                 .ToHashSet(StringComparer.Ordinal);
 
-            if (selected.Any(repository =>
+            if (capturedResult.SelectedRepositories.Any(repository =>
                     !allowedIds.Contains(repository.RepositoryId)))
             {
                 reason = WorkItemStopReason.RepositoryAccessDenied;
@@ -182,12 +154,7 @@ public sealed class WorkItemPlanningService(
 
         var now = clock.GetUtcNow();
 
-        var jobsUpdated = await database.WorkItemJobs
-            .Where(entry =>
-                entry.Id == claim.JobId &&
-                entry.AgentId == claim.AgentId &&
-                entry.CurrentAttemptId == claim.AttemptId &&
-                entry.Status == WorkItemJobStatus.Running)
+        var jobsUpdated = await database.CurrentJob(claim)
             .ExecuteUpdateAsync(
                 setters => setters
                     .SetProperty(
@@ -229,30 +196,11 @@ public sealed class WorkItemPlanningService(
         WorkItemClaim claim,
         CancellationToken cancellationToken)
     {
-        return await database.WorkItemJobs
+        return await database.CurrentJob(claim)
             .AsNoTracking()
-            .SingleOrDefaultAsync(
-                job =>
-                    job.Id == claim.JobId &&
-                    job.AgentId == claim.AgentId &&
-                    job.CurrentAttemptId == claim.AttemptId &&
-                    job.Status == WorkItemJobStatus.Running,
-                cancellationToken)
+            .SingleOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException(
                 "The claimed job is no longer current.");
-    }
-
-    private IQueryable<WorkItemExecutionAttempt> CurrentAttempt(
-        WorkItemClaim claim)
-    {
-        return database.WorkItemExecutionAttempts.Where(attempt =>
-            attempt.Id == claim.AttemptId &&
-            attempt.WorkItemJobId == claim.JobId &&
-            database.WorkItemJobs.Any(job =>
-                job.Id == claim.JobId &&
-                job.AgentId == claim.AgentId &&
-                job.CurrentAttemptId == claim.AttemptId &&
-                job.Status == WorkItemJobStatus.Running));
     }
 
     private static void RequireOne(int updated)

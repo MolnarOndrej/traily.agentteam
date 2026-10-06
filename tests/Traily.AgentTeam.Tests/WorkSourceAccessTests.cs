@@ -14,6 +14,61 @@ namespace Traily.AgentTeam.Tests;
 
 public sealed class WorkSourceAccessTests
 {
+    [Theory]
+    [InlineData("case-insensitive")]
+    [InlineData("duplicate")]
+    [InlineData("missing")]
+    public async Task ProviderLookupRequiresOneCheckerAndPreservesObservationOrder(string scenario)
+    {
+        var first = new Checker("YOUTRACK");
+        var duplicate = new Checker("youtrack");
+        var second = new Checker("OtherProvider");
+        IWorkSourceAccessCheck[] checks = scenario switch
+        {
+            "duplicate" => [first, duplicate, second],
+            "missing" => [second],
+            _ => [first, second]
+        };
+        await using var fixture = await Fixture.CreateAsync(checks);
+        await fixture.SeedAsync();
+
+        var observations = await fixture.CheckAsync();
+
+        Assert.Equal(new[] { "OperationalDatabase", "first", "a", "b", "second", "c" },
+            observations.Select(observation => observation.Scope.Id));
+        Assert.Equal(1, second.ConnectionCalls);
+        Assert.Equal(new[] { "c" }, second.ProjectCalls);
+        Assert.Equal(OperationalAvailability.Available,
+            observations.Single(observation => observation.Scope.Id == "c").Availability);
+        Assert.Equal(0, duplicate.ConnectionCalls);
+        Assert.Empty(duplicate.ProjectCalls);
+
+        if (scenario == "case-insensitive")
+        {
+            Assert.Equal(1, first.ConnectionCalls);
+            Assert.Equal(new[] { "a", "b" }, first.ProjectCalls);
+            Assert.All(observations, observation =>
+                Assert.Equal(OperationalAvailability.Available, observation.Availability));
+            Assert.Empty(await fixture.HistoryAsync());
+        }
+        else
+        {
+            Assert.Equal(0, first.ConnectionCalls);
+            Assert.Empty(first.ProjectCalls);
+            Assert.Equal("AccessCheckUnavailable",
+                observations.Single(observation => observation.Scope.Id == "first").ReasonCode);
+            Assert.All(observations.Where(observation => observation.Scope.Id is "a" or "b"),
+                observation =>
+                {
+                    Assert.Equal(OperationalAvailability.Unknown, observation.Availability);
+                    Assert.Equal("ConnectionNotVerified", observation.ReasonCode);
+                });
+            var history = await fixture.HistoryAsync();
+            Assert.Equal(3, history.Count);
+            Assert.All(history, issue => Assert.Null(issue.ResolvedAt));
+        }
+    }
+
     [Fact]
     public async Task MultipleProvidersAndProjectsKeepIndependentFailureRecoveryHistory()
     {

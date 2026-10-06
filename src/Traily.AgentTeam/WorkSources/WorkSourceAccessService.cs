@@ -43,13 +43,17 @@ public sealed class WorkSourceAccessService(
         await ObserveAsync(new OperationalObservation(
             configurationScope, OperationalAvailability.Available));
 
+        var checksByProvider = checks.ToLookup(
+            check => check.ProviderId, StringComparer.OrdinalIgnoreCase);
+        var projectsByConnection = projects.ToLookup(project => project.WorkSourceConnectionId);
+        var connectionIds = connections.Select(connection => connection.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
         foreach (var connection in connections)
         {
             var connectionScope = new OperationalScope(
                 "WorkSourceConnection", connection.Id, "Authenticate");
-            var providers = checks.Where(check => string.Equals(
-                check.ProviderId, connection.ProviderId, StringComparison.OrdinalIgnoreCase))
-                .ToArray();
+            var providers = checksByProvider[connection.ProviderId].ToArray();
             var check = providers.Length == 1 ? providers[0] : null;
             var connectionObservation = check is null
                 ? new OperationalObservation(connectionScope, OperationalAvailability.Unknown,
@@ -58,8 +62,7 @@ public sealed class WorkSourceAccessService(
                     () => check.CheckConnectionAsync(connection, cancellationToken));
             await ObserveAsync(connectionObservation);
 
-            foreach (var project in projects.Where(project =>
-                project.WorkSourceConnectionId == connection.Id))
+            foreach (var project in projectsByConnection[connection.Id])
             {
                 var projectScope = new OperationalScope("WorkSource", project.SourceId, "ReadProject");
                 OperationalObservation observation;
@@ -86,7 +89,7 @@ public sealed class WorkSourceAccessService(
         }
 
         foreach (var project in projects.Where(project =>
-            !connections.Any(connection => connection.Id == project.WorkSourceConnectionId)))
+            !connectionIds.Contains(project.WorkSourceConnectionId)))
         {
             await ObserveAsync(new OperationalObservation(
                 new OperationalScope("WorkSource", project.SourceId, "ReadProject"),
